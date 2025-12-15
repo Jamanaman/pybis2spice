@@ -1,10 +1,6 @@
-
 # This version is for both the GUI and the main pybis2spice module
-__version__ = '1.2'
-__date__ = '26 Nov 2022'
-
-import os
-
+__version__ = '1.3.0-dev'
+__date__ = '30 August 2025'
 
 def get_version():
     return __version__
@@ -12,9 +8,3 @@ def get_version():
 
 def get_date():
     return __date__
-
-
-def create_version_txt_file():
-    version_txt_file = os.path.join(os.path.dirname(os.getcwd()), "pybis2spice", "version.txt")
-    with open(version_txt_file, 'w') as file:
-        file.write(f'{get_version()}')

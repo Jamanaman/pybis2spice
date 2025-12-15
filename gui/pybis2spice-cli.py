@@ -12,7 +12,7 @@ OBSOLETE - No longer planned to be developed. Kept here for reference.
 import pybis2spice
 import os
 import argparse
-import version
+import pybis2spice.version as version
 
 
 def validate_inputs():

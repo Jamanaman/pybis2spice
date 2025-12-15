@@ -25,6 +25,10 @@ gui=[
     "tkinter-tooltip"
     ]
 build=["pyinstaller"]
+test=["unittest"]
 
 [tool.hatch.version]
-path="pybis2spice/pybis2spice/version.py"
+path="version.py"
+
+[tool.mypy]
+python_version = "3.10"

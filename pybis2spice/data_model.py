@@ -19,8 +19,9 @@
 # Imports
 # ---------------------------------------------------------------------------
 import sys
-import ecdtools
 import numpy as np
+from ecdtools import ibis as ecd
+from typing import List, Tuple
 
 
 # ---------------------------------------------------------------------------
@@ -59,7 +60,7 @@ class DataModel(object):
     A data container for the various data tables in the ibis model
     """
 
-    def __init__(self, ibis_ecdtools, model_name, component_name):
+    def __init__(self, ibis_file: ecd.IbsFile, model_name: str, component_name: str):
         """
         Populate the attributes of the DataModel object
 
@@ -75,20 +76,20 @@ class DataModel(object):
 
             If a table or parameter doesn't exist, then it will have a None value
         """
-        self.model_name = model_name
-        self.component_name = component_name
+        self.model_name: str  = model_name
+        self.component_name: str = component_name
 
         try:
-            # Load IBIS file. Transform=True converts numerical numbers from strings to decimal
-            ibis = ibis_ecdtools
-            # ecdtools.ibis.load_file(file_path, transform=True)
+            self.file = ibis_file
+            self.file_name: str = ibis_file.file_name
+            self.model: ecd.Model  = ibis_file.get_model_by_name(model_name)
+            self.component: ecd.Component = ibis_file.get_component_by_name(component_name)
+            self.model_type: str = self.model.model_type
 
-            self.file = ibis
-            self.file_name = ibis.file_name
-            self.model = ibis.get_model_by_name(model_name)
-            self.component = ibis.get_component_by_name(component_name)
-            self.model_type = self.model.model_type
-
+            self.enable: str = self.model.enable
+            self.polarity: str = self.model.polarity
+            
+            self.v_ref = self.model.vref
             self.r_pkg = extract_range_param(self.component.package.r_pkg)
             self.l_pkg = extract_range_param(self.component.package.l_pkg)
             self.c_pkg = extract_range_param(self.component.package.c_pkg)
@@ -105,10 +106,16 @@ class DataModel(object):
             self.iv_pwr_clamp = extract_iv_table(self.model.power_clamp)
             self.iv_gnd_clamp = extract_iv_table(self.model.gnd_clamp)
 
-            self.ramp = self.model.ramp  # TODO - Create a function to extract the ramp parameters
-
-            self.vt_rising = [Waveform(data) for data in self.model.rising_waveforms]
-            self.vt_falling = [Waveform(data) for data in self.model.falling_waveforms]
+            self.ramp = extract_ramp_data(self.model.ramp)
+            
+            if not self.model.rising_waveforms is None:
+                self.vt_rising = [Waveform(data) for data in self.model.rising_waveforms]
+            else:
+                self.vt_rising = [generate_ramp(ramp_rate) for ramp_rate in self.ramp[0]]
+            if not self.model.falling_waveforms is None:
+                self.vt_falling = [Waveform(data) for data in self.model.falling_waveforms]
+            else:
+                self.vt_falling = [generate_ramp(ramp_rate) for ramp_rate in self.ramp[1]]
 
         except Exception as error:
             print(error)
@@ -187,37 +194,37 @@ def extract_range_param(obj):
     return arr
 
 
-def extract_iv_table(iv_data):
+def extract_iv_table(iv_data: List[Tuple[str|float]]|None):
     """
     returns a IV numpy array of the ecdtools object model-iv data
     """
     arr = None
     if iv_data is not None:
         arr = np.asarray(iv_data, dtype='float64')
-        arr = arr[arr[:, 0].argsort()]  # Sort by the first column
+        # Sort by the first column
+        arr = arr[arr[:, 0].argsort()]
     return arr
 
+def extract_ramp_data(ramp: ecd.Ramp):
+    """
+    returns a tuple of the ecdtools object model ramp data in the order: rising ramp rate (typ, min, max), falling ramp rate (typ, min, max), r_load
+    """
+    ramp_dat = None
+    if ramp is not None:
+        dv_dt_f = np.array([(val[0], val[1]) if val is not None else (None, None) for val in ramp.dv_dt_f], dtype='float64')
+        dv_dt_r = np.array([(val[0], val[1]) if val is not None else (None, None) for val in ramp.dv_dt_r], dtype='float64')
+        r_load = ramp.r_load if not ramp.r_load is None else 50.0 # default load is 50 Ohms if not defined as per IBIS 7.2
+        ramp_dat = (dv_dt_r, dv_dt_f, r_load)
+    return ramp_dat
 
-def get_ibis_model_ecdtools(ibis_filename):
+def generate_ramp(ramp_rate: Tuple[float, float], v_high:float, v_low:float = 0):
     """
-    returns the ibis object from the ecdtools library
+    returns an ndarray describing the voltage ramp as a start time and voltage and end time and voltage 
     """
-    ibis = ecdtools.ibis.load_file(ibis_filename, transform=True)
-    return ibis
-
-
-def list_components(ibis_model_ecdtools):
-    """
-    returns a list of all the components within the ibis file
-    """
-    return ibis_model_ecdtools.component_names
-
-
-def list_models(ibis_data_model):
-    """
-    returns a list of all the models within the ibis file
-    """
-    return ibis_data_model.model_names
+    ramp = [[0, v_low]]
+    t_end = (v_high/ramp_rate[0])*ramp_rate[1]
+    ramp.append([v_high, t_end])
+    return np.asarray(ramp, dtype='float64')
 
 
 def adjust_device_data(iv_device, iv_clamp):
@@ -526,7 +533,7 @@ def compress_param(k_param, threshold=1e-6):
 
 def find_waveform_cutoff_for_truncation(vt, diff_to_trim):
     """
-    Trunactes the k_parameter waveform by removing samples from the end of the waveform till the last sample 
+    Truncates the k_parameter waveform by removing samples from the end of the waveform till the last sample 
     is within a specified difference from the sample before based on percentage of the value range of the waveform.
 
         Parameters:

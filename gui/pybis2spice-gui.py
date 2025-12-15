@@ -8,10 +8,11 @@ A tkinter GUI for helping users to convert IBIS models into SPICE models
 # ---------------------------------------------------------------------------
 import matplotlib.pyplot as plt
 
-from pybis2spice import pybis2spice
+from pybis2spice import data_model
 from pybis2spice import plot
 from pybis2spice import version
 from pybis2spice import subcircuit
+from ecdtools import ibis as ecd
 import tkinter as tk
 from tkinter import ttk
 from tkinter import messagebox
@@ -29,7 +30,7 @@ import os
 import platform
 
 logging.basicConfig(level=logging.INFO)
-ibis_model = None  # The ecdtools ibis_model object
+ibis_file = None  # The ecdtools ibis_model object
 
 # ---------------------------------------------------------------------------
 # Helper Functions
@@ -182,7 +183,7 @@ def create_subcircuit_file_callback():
 
     main_window.config(cursor="wait")
     global ibis_model
-    ibis_data = pybis2spice.DataModel(ibis_model, model_name, component_name)
+    ibis_data = data_model.DataModel(ibis_model, model_name, component_name)
     main_window.update()
     time.sleep(0.01)
     main_window.config(cursor="")
@@ -328,16 +329,14 @@ def browse_ibis_file_callback():
         list_component.delete(0, tk.END)
         list_model.delete(0, tk.END)
 
-        global ibis_model
-        ibis_model = pybis2spice.get_ibis_model_ecdtools(ibis_filepath)
+        global ibis_file
         logging.info(f"Parsing ibis file from {ibis_filepath}")
+        ibis_file = ecd.load_file(ibis_filepath, transform=True)
 
-        component_names = pybis2spice.list_components(ibis_model)
-        for index, component in enumerate(component_names, start=1):
+        for index, component in enumerate(ibis_file.component_names, start=1):
             list_component.insert(index, component)
 
-        model_names = pybis2spice.list_models(ibis_model)
-        for index, model in enumerate(model_names, start=1):
+        for index, model in enumerate(ibis_file.model_names, start=1):
             list_model.insert(index, model)
 
         # Set default selection to first item
@@ -358,8 +357,8 @@ def check_model_callback():
 
     main_window.config(cursor="wait")
 
-    global ibis_model
-    ibis_data = pybis2spice.DataModel(ibis_model, model_name, component_name)
+    global ibis_file
+    ibis_data = data_model.DataModel(ibis_file, model_name, component_name)
 
     main_window.update()
     time.sleep(0.1)
@@ -376,7 +375,7 @@ def check_model_callback():
 # Check Model Window
 # ---------------------------------------------------------------------------
 
-def check_model_window(ibis_data):
+def check_model_window(ibis_data: data_model.DataModel):
     data_window = tk.Toplevel(main_window)
     data_window.geometry(f"+{main_window.winfo_rootx() + 50}+{main_window.winfo_rooty() + 50}")
     data_window.title(f"Check IBIS Model - {ibis_data.model_name}")
@@ -475,8 +474,10 @@ def check_model_window(ibis_data):
         rv_array[:, 3] = np.absolute(ibis_data.iv_pullup[:, 0] / ibis_data.iv_pullup[:, 3])  # max
 
         # Remove values outside the 0 - VCC range
-        vcc = pybis2spice.get_reference(ibis_data.pullup_ref, ibis_data.v_range, 3)
-        rv_array = rv_array[(np.logical_and(rv_array[:, 0] >= 0, rv_array[:, 0] <= vcc))]
+        vcc = data_model.get_reference(ibis_data.pullup_ref, ibis_data.v_range, 3)
+        if vcc is not None:
+            rv_array = rv_array[(np.logical_and(rv_array[:, 0] >= 0, rv_array[:, 0] <= vcc))]
+        
 
         fig7 = plot.plot_rv_data_single(rv_array, "Pullup device Resistance-Voltage data", marker=marker)
         device_lbl = "\n1. Device configured to switch on pullup transistor.\n" \
@@ -495,8 +496,9 @@ def check_model_window(ibis_data):
         rv_array[:, 3] = np.absolute(ibis_data.iv_pulldown[:, 0] / ibis_data.iv_pulldown[:, 3])  # max
 
         # Remove values outside the 0 - VCC range
-        vcc = pybis2spice.get_reference(ibis_data.pullup_ref, ibis_data.v_range, 3)
-        rv_array = rv_array[(np.logical_and(rv_array[:, 0] >= 0, rv_array[:, 0] <= vcc))]
+        vcc = data_model.get_reference(ibis_data.pullup_ref, ibis_data.v_range, 3)
+        if vcc is not None:
+            rv_array = rv_array[(np.logical_and(rv_array[:, 0] >= 0, rv_array[:, 0] <= vcc))]
 
         fig8 = plot.plot_rv_data_single(rv_array, "Pulldown device Resistance-Voltage data", marker=marker)
         device_lbl = "\n1. Device configured to switch on pulldown transistor.\n" \

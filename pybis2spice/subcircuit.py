@@ -13,8 +13,8 @@
 import os.path
 
 import numpy as np
-from pybis2spice import pybis2spice
-from pybis2spice import version
+from .data_model import DataModel, get_reference, solve_k_params_output_open_drain, solve_k_params_output, compress_param, find_waveform_cutoff_for_truncation
+from .version import get_version
 
 
 _TIME = 0
@@ -23,12 +23,12 @@ _KD = 2
 _KD_OD = 1
 
 
-def generate_spice_model(io_type, subcircuit_type, ibis_data, corner, output_filepath, truncation):
+def generate_spice_model(io_type: str, subcircuit_type:str, ibis_data: DataModel, corner: str, output_filepath: str, truncation: float):
     """
     Wrapper around the subcircuit file creation functions. Calls the relevant function i.e. LTSpice or Generic
 
         Parameters:
-            io_type - "Input" or "Output"
+            io_type - "Input" or "Output" or "Tri-State
             subcircuit_type - "LTSpice" or "Generic"
             ibis_data - a DataModel object (defined in pybis2spice.py)
             corner - "WeakSlow" or "Typical" or "FastStrong"
@@ -92,7 +92,7 @@ def spice_header_info(ibis_data, corner, extra_info=""):
     st += f'* Corner: {corner}\n'
     st += f'* Voltage Range (V): {ibis_data.v_range} (Typ, Min, Max)\n'
     st += f'* Temperature Range (degC): {ibis_data.temp_range} (Typ, Min, Max)\n'
-    st += f'* SPICE subcircuit model created with pybis2spice version {version.get_version()}\n'
+    st += f'* SPICE subcircuit model created with pybis2spice version {get_version()}\n'
     st += f'* For more info, visit https://github.com/kamratia1/pybis2spice/\n*\n'
     st += f'{extra_info}'
     st += "*********************************************************************\n\n"
@@ -166,8 +166,8 @@ def define_pwr_and_gnd_clamps(ibis_data, corner, ng=False):
     _INDEX = convert_corner_str_to_index(corner)
     _CORNER_INDEX = _INDEX + 1
 
-    pwr_clamp_ref = pybis2spice.get_reference(ibis_data.pwr_clamp_ref, ibis_data.v_range, _CORNER_INDEX)
-    gnd_clamp_ref = pybis2spice.get_reference(ibis_data.gnd_clamp_ref, 0, _CORNER_INDEX)
+    pwr_clamp_ref = get_reference(ibis_data.pwr_clamp_ref, ibis_data.v_range, _CORNER_INDEX)
+    gnd_clamp_ref = get_reference(ibis_data.gnd_clamp_ref, 0, _CORNER_INDEX)
 
     return_val = ""
 
@@ -209,8 +209,8 @@ def define_pullup_and_pulldown_devices(ibis_data, corner, ng=False):
     _INDEX = convert_corner_str_to_index(corner)
     _CORNER_INDEX = _INDEX + 1
 
-    pullup_ref = pybis2spice.get_reference(ibis_data.pullup_ref, ibis_data.v_range, _CORNER_INDEX)
-    pulldown_ref = pybis2spice.get_reference(ibis_data.pulldown_ref, 0, _CORNER_INDEX)
+    pullup_ref = get_reference(ibis_data.pullup_ref, ibis_data.v_range, _CORNER_INDEX)
+    pulldown_ref = get_reference(ibis_data.pulldown_ref, 0, _CORNER_INDEX)
 
     return_val = ""
     # Arbitrary Source definition for pullup and pulldown devices
@@ -286,14 +286,14 @@ def create_generic_output_model(ibis_data, corner, io_type, output_filepath, tru
         _CORNER_INDEX = _INDEX + 1
 
         if ibis_data.model_type.lower() == "open_drain":
-            kr = pybis2spice.solve_k_params_output_open_drain(ibis_data, corner=_CORNER_INDEX, waveform_type="Rising", truncation=truncation)
-            kf = pybis2spice.solve_k_params_output_open_drain(ibis_data, corner=_CORNER_INDEX, waveform_type="Falling", truncation=truncation)
+            kr = solve_k_params_output_open_drain(ibis_data, corner=_CORNER_INDEX, waveform_type="Rising", truncation=truncation)
+            kf = solve_k_params_output_open_drain(ibis_data, corner=_CORNER_INDEX, waveform_type="Falling", truncation=truncation)
         else:
-            kr = pybis2spice.solve_k_params_output(ibis_data, corner=_CORNER_INDEX, waveform_type="Rising", truncation=truncation)
-            kf = pybis2spice.solve_k_params_output(ibis_data, corner=_CORNER_INDEX, waveform_type="Falling", truncation=truncation)
+            kr = solve_k_params_output(ibis_data, corner=_CORNER_INDEX, waveform_type="Rising", truncation=truncation)
+            kf = solve_k_params_output(ibis_data, corner=_CORNER_INDEX, waveform_type="Falling", truncation=truncation)
 
-        kr = pybis2spice.compress_param(kr)
-        kf = pybis2spice.compress_param(kf)
+        kr = compress_param(kr)
+        kf = compress_param(kf)
 
         with open(output_filepath, 'w') as file:
             header = spice_header_info(ibis_data, corner)
@@ -391,14 +391,14 @@ def create_ltspice_output_model(ibis_data, corner, io_type, output_filepath, tru
         _CORNER_INDEX = _INDEX + 1
 
         if ibis_data.model_type.lower() == "open_drain":
-            kr = pybis2spice.solve_k_params_output_open_drain(ibis_data, corner=_CORNER_INDEX, waveform_type="Rising", truncation=truncation)
-            kf = pybis2spice.solve_k_params_output_open_drain(ibis_data, corner=_CORNER_INDEX, waveform_type="Falling", truncation=truncation)
+            kr = solve_k_params_output_open_drain(ibis_data, corner=_CORNER_INDEX, waveform_type="Rising", truncation=truncation)
+            kf = solve_k_params_output_open_drain(ibis_data, corner=_CORNER_INDEX, waveform_type="Falling", truncation=truncation)
         else:
-            kr = pybis2spice.solve_k_params_output(ibis_data, corner=_CORNER_INDEX, waveform_type="Rising", truncation=truncation)
-            kf = pybis2spice.solve_k_params_output(ibis_data, corner=_CORNER_INDEX, waveform_type="Falling", truncation=truncation)
+            kr = solve_k_params_output(ibis_data, corner=_CORNER_INDEX, waveform_type="Rising", truncation=truncation)
+            kf = solve_k_params_output(ibis_data, corner=_CORNER_INDEX, waveform_type="Falling", truncation=truncation)
 
-        kr = pybis2spice.compress_param(kr)
-        kf = pybis2spice.compress_param(kf)
+        kr = compress_param(kr)
+        kf = compress_param(kf)
 
         with open(output_filepath, 'w') as file:
 
@@ -633,14 +633,14 @@ def create_ngspice_output_model(ibis_data, corner, io_type, output_filepath, tru
         _CORNER_INDEX = _INDEX + 1
 
         if ibis_data.model_type.lower() == "open_drain":
-            kr = pybis2spice.solve_k_params_output_open_drain(ibis_data, corner=_CORNER_INDEX, waveform_type="Rising", truncation=truncation)
-            kf = pybis2spice.solve_k_params_output_open_drain(ibis_data, corner=_CORNER_INDEX, waveform_type="Falling", truncation=truncation)
+            kr = solve_k_params_output_open_drain(ibis_data, corner=_CORNER_INDEX, waveform_type="Rising", truncation=truncation)
+            kf = solve_k_params_output_open_drain(ibis_data, corner=_CORNER_INDEX, waveform_type="Falling", truncation=truncation)
         else:
-            kr = pybis2spice.solve_k_params_output(ibis_data, corner=_CORNER_INDEX, waveform_type="Rising", truncation=truncation)
-            kf = pybis2spice.solve_k_params_output(ibis_data, corner=_CORNER_INDEX, waveform_type="Falling", truncation=truncation)
+            kr = solve_k_params_output(ibis_data, corner=_CORNER_INDEX, waveform_type="Rising", truncation=truncation)
+            kf = solve_k_params_output(ibis_data, corner=_CORNER_INDEX, waveform_type="Falling", truncation=truncation)
 
-        kr = pybis2spice.compress_param(kr)
-        kf = pybis2spice.compress_param(kf)
+        kr = compress_param(kr)
+        kf = compress_param(kf)
 
         with open(output_filepath, 'w') as file:
 
@@ -813,13 +813,11 @@ def create_osc_waveform_pwl(t1, k1, t2, k2, ng=False):
     """
     def _create_ngspice_osc_waveform_pwl(t1, k1, t2, k2):
         str_val = ''
-        for i in range(len(t1)):
-            str_val = str_val + f' {{{t1[i]}}} {k1[i]}'
-        
-        str_val = str_val + f' {{{t1[-1]}+GAP_POS*0.25}} {k1[-1] + (k2[0]-k1[-1])/np.e**3} {{{t1[-1]}+GAP_POS*0.33}} {k1[-1] + (k2[0]-k1[-1])/np.e**2} {{{t1[-1]}+GAP_POS*0.5}} {k1[-1] + (k2[0]-k1[-1])/np.e}' 
+        for t, k in zip(t1, k1):
+            str_val = str_val + f' {t} {k}'
 
-        for i in range(len(t2)):
-            str_val = str_val + f' {{{t1[-1]}+{t2[i]}+GAP_POS}} {k2[i]}'
+        for t, k in zip(t2, k2):
+            str_val = str_val + f' {{{t1[-1]}+{t}+GAP_POS}} {k}'
 
         str_val = str_val + f' {{{t1[-1]}+{t2[-1]}+GAP_POS+GAP_NEG}} {k2[-1]}'
         return str_val
