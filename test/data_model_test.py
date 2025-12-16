@@ -1,11 +1,10 @@
 import unittest
 import pybis2spice.data_model as dm
 import numpy as np
-import ecdtools
 from ecdtools import ibis as ecd
 
 
-class TestPybis2Spice(unittest.TestCase):
+class DataModelTest(unittest.TestCase):
 
     def test_extract_range_param(self):
         # Test an empty TypMinMax object
@@ -13,11 +12,11 @@ class TestPybis2Spice(unittest.TestCase):
         data.typical = None
         data.minimum = None
         data.maximum = None
-        self.assertEqual(dm.data_model.extract_range_param(data), None)
+        self.assertEqual(dm.extract_range_param(data), None)
 
         data.typical = 1e-9
-        data.minimum = 8.341E-02
-        np.testing.assert_equal(dm.extract_range_param(data), [1e-9, 8.341E-02, None])
+        data.minimum = 8.341e-02
+        np.testing.assert_equal(dm.extract_range_param(data), [1e-9, 8.341e-02, None])
 
         data.typical = None
         data.minimum = None
@@ -170,6 +169,84 @@ class TestPybis2Spice(unittest.TestCase):
         self.assertEqual(dm.get_reference(ref2, 0, 1), 0)
         self.assertEqual(dm.get_reference(ref2, 0, 2), 0)
         self.assertEqual(dm.get_reference(ref2, 0, 3), 0)
+
+    def test_extract_ramp_data(self):
+        ramp_10ns = ecd.Ramp()
+        ramp_10ns.dv_dt_r = [[0.8, 10e-9], None, None]
+        ramp_10ns.dv_dt_f = [[0.9, 11e-9], None, None]
+
+        ramp_20ns_with_Z = ecd.Ramp()
+        ramp_20ns_with_Z.dv_dt_r = [[0.7, 21e-9], None, None]
+        ramp_20ns_with_Z.dv_dt_f = [[0.8, 20e-9], None, None]
+        ramp_20ns_with_Z.r_load = 100.0
+
+        ## TODO add tests with min and max values implemented as well 
+
+        # Test with and without presence of load, default is 50 Ohms
+        np.testing.assert_equal(
+            dm.extract_ramp_data(ramp_10ns), 
+            (np.array([(0.8, 10e-9), (None, None), (None, None)], dtype='float64'), np.array([(0.9, 11e-9), (None, None), (None, None)], dtype='float64'), 50.0)
+            ) # without load 
+        np.testing.assert_equal(
+            dm.extract_ramp_data(ramp_20ns_with_Z), 
+            (np.array([(0.7, 21e-9), (None, None), (None, None)], dtype='float64'), np.array([(0.8, 20e-9), (None, None), (None, None)], dtype='float64'), 100.0)
+            ) # with load
+
+    def test_generate_ramp(self):
+        ramp_rate_10ns = np.array((0.8, 10e-9), dtype='float64')
+        ramp_rate_21ns = np.array((0.7, 21e-9), dtype='float64')
+
+        v_high = 1.8
+        v_low = 0.3
+
+        
+        np.testing.assert_equal(
+            dm.generate_ramp(ramp_rate_10ns), 
+            np.array(
+                [
+                    [0, 0], 
+                    [1.2*0.2, 0.5*ramp_rate_10ns[1]], 
+                    [1.2*0.2+ramp_rate_10ns[0], 1.5*ramp_rate_10ns[1]],
+                    [1.2, 2*ramp_rate_10ns[1]]
+                ]
+                )
+            )
+        
+        np.testing.assert_equal(
+            dm.generate_ramp(ramp_rate_10ns, v_high=v_high, v_low=v_low), 
+            np.array(
+                [
+                    [v_low, 0], 
+                    [(v_high-v_low)*0.2+v_low, 0.5*ramp_rate_10ns[1]], 
+                    [(v_high-v_low)*0.2+v_low+ramp_rate_10ns[0], 1.5*ramp_rate_10ns[1]],
+                    [v_high, 2*ramp_rate_10ns[1]]
+                ]
+                )
+            )
+        
+        np.testing.assert_equal(
+            dm.generate_ramp(ramp_rate_21ns, ramp_type='Falling'), 
+            np.array(
+                [
+                    [1.2, 0], 
+                    [1.2*0.8, 0.5*ramp_rate_21ns[1]], 
+                    [1.2*0.8-ramp_rate_21ns[0], 1.5*ramp_rate_21ns[1]],
+                    [0, 2*ramp_rate_21ns[1]]
+                ]
+                )
+            )
+        
+        np.testing.assert_equal(
+            dm.generate_ramp(ramp_rate_21ns, v_high = v_high, v_low = v_low, ramp_type='Falling'), 
+            np.array(
+                [
+                    [v_high, 0], 
+                    [(v_high-v_low)*0.8+v_low, 0.5*ramp_rate_21ns[1]], 
+                    [(v_high-v_low)*0.8+v_low-ramp_rate_21ns[0], 1.5*ramp_rate_21ns[1]],
+                    [v_low, 2*ramp_rate_21ns[1]]
+                ]
+                )
+            )
 
     def test_generating_current_data(self):
         # TODO test_generating_current_data

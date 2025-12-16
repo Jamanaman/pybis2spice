@@ -111,11 +111,21 @@ class DataModel(object):
             if not self.model.rising_waveforms is None:
                 self.vt_rising = [Waveform(data) for data in self.model.rising_waveforms]
             else:
-                self.vt_rising = [generate_ramp(ramp_rate) for ramp_rate in self.ramp[0]]
+                self.vt_rising = [
+                    generate_ramp(
+                        ramp_rate=self.ramp[0], v_high=max([self.v_range, 3]), 
+                        v_low=min([self.v_range, 0]), ramp_type='Rising'
+                        )
+                    ]
             if not self.model.falling_waveforms is None:
                 self.vt_falling = [Waveform(data) for data in self.model.falling_waveforms]
             else:
-                self.vt_falling = [generate_ramp(ramp_rate) for ramp_rate in self.ramp[1]]
+                self.vt_falling = [
+                    generate_ramp(
+                        ramp_rate=self.ramp[1], v_high=max([self.v_range, 3]), 
+                        v_low=min([self.v_range, 0]), ramp_type='Falling'
+                        )
+                    ]
 
         except Exception as error:
             print(error)
@@ -217,13 +227,42 @@ def extract_ramp_data(ramp: ecd.Ramp):
         ramp_dat = (dv_dt_r, dv_dt_f, r_load)
     return ramp_dat
 
-def generate_ramp(ramp_rate: Tuple[float, float], v_high:float, v_low:float = 0):
+def generate_ramp(ramp_rate: Tuple[float, float], v_high:float = 1.2, v_low:float = 0, ramp_type:str = 'Rising'):
     """
-    returns an ndarray describing the voltage ramp as a start time and voltage and end time and voltage 
+    The ramp rate of an IBIS model simply defines the time taken from 20%-80% of logic high or in reverse for logic low 
+    and the voltage difference between the two points. To give some mild shaping and to ensure that one has appropriate
+    start and end voltages, this function starts the linear ramp at a time point equal to half the given duration of the 
+    linear ramp and then adds another half ramp duration after the end of the linear ramp to reach the final high voltage.
+
+        Parameters:
+            ramp_rate: Tuple in the form (dv, dt) 
+            v_high: logic high voltage
+            v_low: logic low voltage
+            ramp_type: either 'Rising' or 'Falling'
+
+        Returns:
+            ramp: numpy array of ramp data
+
+    ## Potential Improvements:
+    Add options for ramp shapes to give the designer the choice for smoother ramps or ramps with stepped behaviours.
     """
-    ramp = [[0, v_low]]
-    t_end = (v_high/ramp_rate[0])*ramp_rate[1]
-    ramp.append([v_high, t_end])
+    if ramp_type == 'Rising':
+        v_start = v_low
+        v_20 = (v_high-v_low)*0.2+v_low
+        v_80 = v_20+ramp_rate[0]
+        v_end = v_high 
+    elif ramp_type == 'Falling':
+        v_end = v_low
+        v_20 = (v_high-v_low)*0.8+v_low
+        v_80 = v_20-ramp_rate[0]
+        v_start = v_high 
+    ramp = [[v_start, 0]]
+    t_start_ramp = ramp_rate[1]/2
+    ramp.append([v_20, t_start_ramp])
+    t_end_ramp = ramp_rate[1]+t_start_ramp
+    ramp.append([v_80, t_end_ramp])
+    t_high = t_end_ramp + ramp_rate[1]/2
+    ramp.append([v_end, t_high])
     return np.asarray(ramp, dtype='float64')
 
 
@@ -323,7 +362,7 @@ def get_reference(ref, v_range, corner):
     return value
 
 
-def generating_current_data(ibis_data, time, corner, waveform_obj, truncation):
+def generating_current_data(ibis_data: DataModel, time: np.ndarray, corner: int, waveform_obj: Waveform, truncation: float):
     """
     Generates the current waveforms for the devices and clamps with respect to the given time array
 
