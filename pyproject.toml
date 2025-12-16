@@ -28,7 +28,7 @@ build=["pyinstaller"]
 test=["unittest"]
 
 [tool.hatch.version]
-path="version.py"
+path="pybis2spice/version.py"
 
 [tool.mypy]
 python_version = "3.10"
