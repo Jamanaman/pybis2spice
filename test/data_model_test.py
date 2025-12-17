@@ -2,6 +2,9 @@ import unittest
 import pybis2spice.data_model as dm
 import numpy as np
 from ecdtools import ibis as ecd
+import os 
+
+test_dir = os.path.dirname(__file__)
 
 
 class DataModelTest(unittest.TestCase):
@@ -22,16 +25,16 @@ class DataModelTest(unittest.TestCase):
         data.minimum = None
         data.maximum = 3e-12
         np.testing.assert_equal(dm.extract_range_param(data), [None, None, 3e-12])
-
+        
         # Test values from some test Ibis files
-        ibis_file = 'ibis/bird57ex.ibs'
+        ibis_file = os.path.join(test_dir,'ibis/bird57ex.ibs')
         ibis = ecd.load_file(ibis_file, transform=True)
         component = ibis.get_component_by_name('BIRD57ex')
         np.testing.assert_equal(dm.extract_range_param(component.package.r_pkg), [0.1, None, None])
         np.testing.assert_equal(dm.extract_range_param(component.package.l_pkg), [8e-9, None, None])
         np.testing.assert_equal(dm.extract_range_param(component.package.c_pkg), [5e-12, None, None])
 
-        ibis_file = 'ibis/hct1g08.ibs'
+        ibis_file = os.path.join(test_dir, 'ibis/hct1g08.ibs')
         ibis = ecd.load_file(ibis_file, transform=True)
         component = ibis.get_component_by_name('74HCT1G08_GW')
         model = ibis.get_model_by_name('HCT1G08_IN_50')
@@ -41,7 +44,7 @@ class DataModelTest(unittest.TestCase):
                                 [8.353E-02, 8.341E-02, 8.366E-02])
 
     def test_extract_iv_table(self):
-        ibis_file = 'ibis/bushold.ibs'
+        ibis_file = os.path.join(test_dir, 'ibis/bushold.ibs')
         ibis = ecd.load_file(ibis_file, transform=True)
         model = ibis.get_model_by_name('TOP_MODEL_BUS_HOLD')
 
