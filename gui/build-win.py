@@ -82,8 +82,6 @@ def folder_mopup():
 
 if __name__ == '__main__':
 
-    version.create_version_txt_file()  # Create the version txt file
-
     if _GENERATE_EXE_GUI:
         gui_filepath = create_gui_exe()
     else:
