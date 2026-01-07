@@ -11,12 +11,13 @@
 # Imports
 # ---------------------------------------------------------------------------
 import os.path
+import random
 
 import numpy as np
 from .data_model import DataModel, get_reference, solve_k_params_output_open_drain, solve_k_params_output, compress_param, find_waveform_cutoff_for_truncation
 from .version import get_version
 
-
+# IBIS Data File Column Indexes for Waveform Tables
 _TIME = 0
 _KU = 1
 _KD = 2
@@ -594,6 +595,11 @@ def ngspice_stimulus_netlist_setup():
     setup_str += ".else\n"
     setup_str += "V15 LOW 0 0\n"
     setup_str += ".endif\n"
+    setup_str += ".if (stimulus_==7)\n"
+    setup_str += "V61 RAND 0 1\n"
+    setup_str += ".else\n"
+    setup_str += "V61 RAND 0 0\n"
+    setup_str += ".endif\n"
 
     setup_str += "S1 Ku K_U_OSC OSC 0 SW\n"
     setup_str += "S2 Ku K_U_OSC_INV OSC_INV 0 SW\n"
@@ -601,6 +607,7 @@ def ngspice_stimulus_netlist_setup():
     setup_str += "S4 Ku K_U_FALL FALL 0 SW\n"
     setup_str += "S5 Ku K_U_HIGH HIGH 0 SW\n"
     setup_str += "S6 Ku K_U_LOW LOW 0 SW\n"
+    setup_str += "S20 Ku K_U_RAND RAND 0 SW\n"
 
     # Setup the Stimulus setting options for the Pulldown Waveform (Kd)
     setup_str += "\n* Setup the Stimulus setting options for the Pulldown Waveform (Kd)\n"
@@ -610,6 +617,7 @@ def ngspice_stimulus_netlist_setup():
     setup_str += "S10 Kd K_D_FALL FALL 0 SW\n"
     setup_str += "S11 Kd K_D_HIGH HIGH 0 SW\n"
     setup_str += "S12 Kd K_D_LOW LOW 0 SW\n"
+    setup_str += "S21 Kd K_D_RAND RAND 0 SW\n"
 
     return setup_str
 
@@ -644,7 +652,7 @@ def create_ngspice_output_model(ibis_data, corner, io_type, output_filepath, tru
 
         with open(output_filepath, 'w') as file:
 
-            parameter_info = "* Note: This model may only work in LTSpice.\n"
+            parameter_info = "* Note: This model may only work in ngSPICE.\n"
             parameter_info += "* Stimulus Options: \n" \
                               "*\t1 - Oscillate at given freq and duty\n" \
                               "*\t2 - Inverted Oscillate at given freq and duty\n" \
@@ -652,7 +660,8 @@ def create_ngspice_output_model(ibis_data, corner, io_type, output_filepath, tru
                               "*\t4 - Falling Edge with delay\n" \
                               "*\t5 - Stuck High\n" \
                               "*\t6 - Stuck Low\n" \
-                              "*\t7 - HighZ (if 3-State output)\n\n"
+                              "*\t7 - Pseudorandom Bitstream\n" \
+                              "*\t8 - HighZ (if 3-State output)\n\n"
             header = spice_header_info(ibis_data, corner, extra_info=parameter_info)
             file.write(header)
 
@@ -691,11 +700,14 @@ def create_ngspice_output_model(ibis_data, corner, io_type, output_filepath, tru
             file.write('.param GAP_NEG = calc_gap_neg\n')
             file.write('.endif\n\n')
 
-            max_stimulus = 6
-            if ibis_data.model_type.lower() == "3-state":
-                max_stimulus = 7
+            file.write(f'\n* Define Period Duration for Bitstream\n')
+            file.write(f'.param t_period = {{(1/freq)}}\n')
 
-            # Limit the stimulus between 1 and 7
+            max_stimulus = 7
+            if ibis_data.model_type.lower() == "3-state":
+                max_stimulus = 8
+
+            # Limit the stimulus between 1 and 8
             file.write(f'.if (stimulus < 1)\n')
             file.write(f'.param stimulus_ =  1\n')
             file.write(f'.elseif (stimulus > {max_stimulus})\n')
@@ -731,6 +743,14 @@ def create_ngspice_output_model(ibis_data, corner, io_type, output_filepath, tru
                 kuf_str = create_edge_waveform_pwl(kf[:, _TIME], kf[:, _KU])
                 kdf_str = create_edge_waveform_pwl(kf[:, _TIME], kf[:, _KD])
 
+            # Pseudorandom Strings
+            bitstream = [random.randint(0, 1) for _ in range(127)]
+            if ibis_data.model_type.lower() == "open_drain":
+                kd_rand_str = create_arb_bitstream_pwl(kf[:, _TIME], kf[:, _KD_OD], kr[:, _TIME], kr[:, _KD_OD], bitstream, ng=True)
+            else:
+                ku_rand_str = create_arb_bitstream_pwl(kf[:, _TIME], kf[:, _KU], kr[:, _TIME], kr[:, _KU], bitstream, ng=True)
+                kd_rand_str = create_arb_bitstream_pwl(kf[:, _TIME], kf[:, _KD], kr[:, _TIME], kr[:, _KD], bitstream, ng=True)
+
             if ibis_data.model_type.lower() != "open_drain":
                 # Setup the K-Parameter waveforms for the Pullup transistor (Ku)
                 file.write(f"V16 K_U_OSC 0 PWL({ku_osc_str}) r=0 td={{delay}}\n")
@@ -739,6 +759,7 @@ def create_ngspice_output_model(ibis_data, corner, io_type, output_filepath, tru
                 file.write(f"V19 K_U_OSC_INV 0 PWL({ku_inv_osc_str}) r=0 td={{delay}}\n")
                 file.write(f"V20 K_U_RISE 0 PWL({kur_str}) td={{delay}}\n")
                 file.write(f"V21 K_U_FALL 0 PWL({kuf_str}) td={{delay}}\n")
+                file.write(f"V51 K_U_RAND 0 PWL({ku_rand_str}) r=0  td={{delay}}\n")
 
             # Setup the K-Parameter waveforms for the Pullup transistor (Kd)
             file.write(f"V36 K_D_OSC 0 PWL({kd_osc_str}) r=0 td={{delay}}\n")
@@ -747,9 +768,10 @@ def create_ngspice_output_model(ibis_data, corner, io_type, output_filepath, tru
             file.write(f"V39 K_D_OSC_INV 0 PWL({kd_inv_osc_str}) r=0 td={{delay}}\n")
             file.write(f"V40 K_D_RISE 0 PWL({kdr_str}) td={{delay}}\n")
             file.write(f"V41 K_D_FALL 0 PWL({kdf_str}) td={{delay}}\n")
+            file.write(f"V52 K_D_RAND 0 PWL({kd_rand_str}) r=0  td={{delay}}\n")
 
             if ibis_data.model_type.lower() == "3-state":
-                file.write(".if(stimulus==7)\n")
+                file.write(".if(stimulus==8)\n")
                 file.write("V50 EN 0 1\n")
                 file.write(".else\n")
                 file.write("V50 EN 0 0\n")
@@ -782,8 +804,7 @@ def convert_iv_table_to_str(voltage, current):
 
 def create_edge_waveform_pwl(time, k_param):
     """
-    Creates the PWL value string for the oscillation waveform
-    Only valid for LTSpice subcircuit
+    Creates the PWL value string for the edge waveform
 
         Parameters:
             time - numpy time array for k parameter waveform
@@ -847,11 +868,79 @@ def create_osc_waveform_pwl(t1, k1, t2, k2, ng=False):
     return str_val
 
 
+def create_arb_bitstream_pwl(t1, k1, t2, k2, bitstream, ng=False):
+    """
+    Creates the PWL value string for an arbitrary bitstream
+
+        Parameters:
+            t1 - numpy time array for first edge (rising or falling)
+            t2 - numpy time array for second edge (rising or falling)
+            k1 - numpy ku or kd array for first edge (rising or falling)
+            k2 - numpy ku or kd array for second edge (rising or falling)
+
+        Returns:
+            str_val: the string that goes into the oscillator PWL source
+    """
+    def _create_ngspice_bitstream_waveform_pwl(t1, k1, t2, k2, bitstream):
+
+
+        str_val = ''
+
+        if bitstream[0] == 0:
+            # First bit-value zero hold zero
+            str_val = str_val + f' 0 {k2[-1]}'
+            str_val = str_val + f' {{T_PERIOD*0.99}} {k2[-1]}'
+        else:
+            for t, k in zip(t1, k1):
+                str_val = str_val + f' {t} {k}'
+
+        for period in range(1, len(bitstream)):
+            # if bit value does not change between 
+            if bitstream[period] == bitstream[period-1]:
+                if bitstream[period] == 1:
+                    str_val = str_val + f' {{T_PERIOD*({period}+0.99)}} {k1[-1]}'
+                else:
+                    str_val = str_val + f' {{T_PERIOD*({period}+0.99)}}  {k2[-1]}'
+                
+            elif bitstream[period] == 1:
+                for t, k in zip(t1, k1):
+                    str_val = str_val + f' {{T_PERIOD*{period}+{t}}} {k}'
+            else:
+                for t, k in zip(t2, k2):
+                    str_val = str_val + f' {{T_PERIOD*{period}+{t}}} {k}'
+
+        return str_val
+    
+    if ng:
+        return _create_ngspice_bitstream_waveform_pwl(t1, k1, t2, k2, bitstream)
+
+    # First Edge
+    # the +0.01p fudge is for Simetrix as it seems to have a bug in its PWLS source
+    # where it cannot start at any value other than 0 regardless of the k_r[0] value
+    
+    str_val = f'0 {k1[0]} +0.01e-12 {k1[0]}'
+    for i in range(1, len(t1)):
+        dt = t1[i] - t1[i - 1]
+        str_val = str_val + f' +{dt} {k1[i]}'
+
+    str_val = str_val + f' +{{GAP_POS}} {k1[-1]} +{t2[0]} {k2[0]}'
+
+    # Second Edge
+    for i in range(1, len(t2)):
+        dt = t2[i] - t2[i - 1]
+        str_val = str_val + f' +{dt} {k2[i]}'
+
+    str_val = str_val + f' +{{GAP_NEG}} {k2[-1]}'
+
+    # gap_pos and gap_neg are parameters calculated within SPICE to oscillate at the right frequency and duty
+    return str_val
+
+
 def determine_crossover_offsets(k_param):
     """
     returns the approximate crossover point between the rising and falling k_param waveforms
         offset_neg: Time offset between beginning of k_param to crossover point
-        offset_neg: Time offset between crossover point to end of k_param
+        offset_pos: Time offset between crossover point to end of k_param
     """
 
     # crossover time point (x_t)
