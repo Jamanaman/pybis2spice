@@ -600,6 +600,11 @@ def ngspice_stimulus_netlist_setup():
     setup_str += ".else\n"
     setup_str += "V61 RAND 0 0\n"
     setup_str += ".endif\n"
+    setup_str += ".if (stimulus_==8)\n"
+    setup_str += "V62 RAND_INV 0 1\n"
+    setup_str += ".else\n"
+    setup_str += "V62 RAND_INV 0 0\n"
+    setup_str += ".endif\n"
 
     setup_str += "S1 Ku K_U_OSC OSC 0 SW\n"
     setup_str += "S2 Ku K_U_OSC_INV OSC_INV 0 SW\n"
@@ -608,6 +613,7 @@ def ngspice_stimulus_netlist_setup():
     setup_str += "S5 Ku K_U_HIGH HIGH 0 SW\n"
     setup_str += "S6 Ku K_U_LOW LOW 0 SW\n"
     setup_str += "S20 Ku K_U_RAND RAND 0 SW\n"
+    setup_str += "S21 Ku K_U_RAND_INV RAND_INV 0 SW\n"
 
     # Setup the Stimulus setting options for the Pulldown Waveform (Kd)
     setup_str += "\n* Setup the Stimulus setting options for the Pulldown Waveform (Kd)\n"
@@ -617,7 +623,8 @@ def ngspice_stimulus_netlist_setup():
     setup_str += "S10 Kd K_D_FALL FALL 0 SW\n"
     setup_str += "S11 Kd K_D_HIGH HIGH 0 SW\n"
     setup_str += "S12 Kd K_D_LOW LOW 0 SW\n"
-    setup_str += "S21 Kd K_D_RAND RAND 0 SW\n"
+    setup_str += "S22 Kd K_D_RAND RAND 0 SW\n"
+    setup_str += "S23 Kd K_D_RAND_INV RAND_INV 0 SW\n"
 
     return setup_str
 
@@ -661,7 +668,8 @@ def create_ngspice_output_model(ibis_data, corner, io_type, output_filepath, tru
                               "*\t5 - Stuck High\n" \
                               "*\t6 - Stuck Low\n" \
                               "*\t7 - Pseudorandom Bitstream\n" \
-                              "*\t8 - HighZ (if 3-State output)\n\n"
+                              "*\t8 - Inverted Pseudorandom Bitstream\n" \
+                              "*\t9 - HighZ (if 3-State output)\n\n"
             header = spice_header_info(ibis_data, corner, extra_info=parameter_info)
             file.write(header)
 
@@ -703,9 +711,9 @@ def create_ngspice_output_model(ibis_data, corner, io_type, output_filepath, tru
             file.write(f'\n* Define Period Duration for Bitstream\n')
             file.write(f'.param t_period = {{(1/freq)}}\n')
 
-            max_stimulus = 7
+            max_stimulus = 8
             if ibis_data.model_type.lower() == "3-state":
-                max_stimulus = 8
+                max_stimulus = 9
 
             # Limit the stimulus between 1 and 8
             file.write(f'.if (stimulus < 1)\n')
@@ -746,10 +754,16 @@ def create_ngspice_output_model(ibis_data, corner, io_type, output_filepath, tru
             # Pseudorandom Strings
             bitstream = [random.randint(0, 1) for _ in range(127)]
             if ibis_data.model_type.lower() == "open_drain":
-                kd_rand_str = create_arb_bitstream_pwl(kf[:, _TIME], kf[:, _KD_OD], kr[:, _TIME], kr[:, _KD_OD], bitstream, ng=True)
+                kd_rand_str = create_arb_bitstream_pwl(kr[:, _TIME], kr[:, _KD_OD], kf[:, _TIME], kf[:, _KD_OD], bitstream, ng=True)
             else:
-                ku_rand_str = create_arb_bitstream_pwl(kf[:, _TIME], kf[:, _KU], kr[:, _TIME], kr[:, _KU], bitstream, ng=True)
-                kd_rand_str = create_arb_bitstream_pwl(kf[:, _TIME], kf[:, _KD], kr[:, _TIME], kr[:, _KD], bitstream, ng=True)
+                ku_rand_str = create_arb_bitstream_pwl(kr[:, _TIME], kr[:, _KU], kf[:, _TIME], kf[:, _KU], bitstream, ng=True)
+                kd_rand_str = create_arb_bitstream_pwl(kr[:, _TIME], kr[:, _KD], kf[:, _TIME], kf[:, _KD], bitstream, ng=True)
+
+            if ibis_data.model_type.lower() == "open_drain":
+                kd__inv_rand_str = create_arb_bitstream_pwl(kf[:, _TIME], kf[:, _KD_OD], kr[:, _TIME], kr[:, _KD_OD], bitstream, ng=True)
+            else:
+                ku_inv_rand_str = create_arb_bitstream_pwl(kf[:, _TIME], kf[:, _KU], kr[:, _TIME], kr[:, _KU], bitstream, ng=True)
+                kd_inv_rand_str = create_arb_bitstream_pwl(kf[:, _TIME], kf[:, _KD], kr[:, _TIME], kr[:, _KD], bitstream, ng=True)
 
             if ibis_data.model_type.lower() != "open_drain":
                 # Setup the K-Parameter waveforms for the Pullup transistor (Ku)
@@ -760,6 +774,7 @@ def create_ngspice_output_model(ibis_data, corner, io_type, output_filepath, tru
                 file.write(f"V20 K_U_RISE 0 PWL({kur_str}) td={{delay}}\n")
                 file.write(f"V21 K_U_FALL 0 PWL({kuf_str}) td={{delay}}\n")
                 file.write(f"V51 K_U_RAND 0 PWL({ku_rand_str}) r=0  td={{delay}}\n")
+                file.write(f"V52 K_U_RAND_INV 0 PWL({ku_inv_rand_str}) r=0  td={{delay}}\n")
 
             # Setup the K-Parameter waveforms for the Pullup transistor (Kd)
             file.write(f"V36 K_D_OSC 0 PWL({kd_osc_str}) r=0 td={{delay}}\n")
@@ -768,10 +783,11 @@ def create_ngspice_output_model(ibis_data, corner, io_type, output_filepath, tru
             file.write(f"V39 K_D_OSC_INV 0 PWL({kd_inv_osc_str}) r=0 td={{delay}}\n")
             file.write(f"V40 K_D_RISE 0 PWL({kdr_str}) td={{delay}}\n")
             file.write(f"V41 K_D_FALL 0 PWL({kdf_str}) td={{delay}}\n")
-            file.write(f"V52 K_D_RAND 0 PWL({kd_rand_str}) r=0  td={{delay}}\n")
+            file.write(f"V53 K_D_RAND 0 PWL({kd_rand_str}) r=0  td={{delay}}\n")
+            file.write(f"V54 K_D_RAND_INV 0 PWL({kd_inv_rand_str}) r=0  td={{delay}}\n")
 
             if ibis_data.model_type.lower() == "3-state":
-                file.write(".if(stimulus==8)\n")
+                file.write(".if(stimulus==9)\n")
                 file.write("V50 EN 0 1\n")
                 file.write(".else\n")
                 file.write("V50 EN 0 0\n")
