@@ -109,7 +109,7 @@ class DataModel(object):
             self.ramp = extract_ramp_data(self.model.ramp)
             
             if not self.model.rising_waveforms is None:
-                self.vt_rising = [Waveform(data) for data in self.model.rising_waveforms]
+                self.vt_rising = extract_waveforms(self.model.rising_waveforms)
             else:
                 self.vt_rising = [
                     generate_ramp(
@@ -118,7 +118,7 @@ class DataModel(object):
                         )
                     ]
             if not self.model.falling_waveforms is None:
-                self.vt_falling = [Waveform(data) for data in self.model.falling_waveforms]
+                self.vt_falling = extract_waveforms(self.model.falling_waveforms)
             else:
                 self.vt_falling = [
                     generate_ramp(
@@ -360,6 +360,18 @@ def get_reference(ref, v_range, corner):
         value = ref[corner-1]
 
     return value
+
+def extract_waveforms(waveform_data: List[ecd.Waveform]) -> List[Waveform]:
+    """
+    Checks if fixture data is valid for the two waveforms present for either a rising or falling edge and then extracts the waveform data.
+    
+    :param waveform_data: List of ecd Waveform objects. Should be of length 2.  
+    :return: List of waveforms in Waveform Object format
+    :rtype: List[Waveform]
+    """
+    if waveform_data[0].v_fixture.typical == 0:
+        waveform_data[0].v_fixture = waveform_data[1].v_fixture
+    return [Waveform(data) for data in waveform_data]
 
 
 def generate_current_data(ibis_data: DataModel, time: np.ndarray, corner: int, waveform_obj: Waveform, truncation: float):
