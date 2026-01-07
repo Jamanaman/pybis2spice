@@ -362,7 +362,7 @@ def get_reference(ref, v_range, corner):
     return value
 
 
-def generating_current_data(ibis_data: DataModel, time: np.ndarray, corner: int, waveform_obj: Waveform, truncation: float):
+def generate_current_data(ibis_data: DataModel, time: np.ndarray, corner: int, waveform_obj: Waveform, truncation: float):
     """
     Generates the current waveforms for the devices and clamps with respect to the given time array
 
@@ -449,8 +449,8 @@ def solve_k_params_output(ibis_data, corner=1, waveform_type="Rising", truncatio
     time = np.unique(time)
 
     # Getting the device and clamp current waveforms based on the new time series
-    (i_pu1, i_pd1, i_pc1, i_gc1, i_rfix1, i_c_comp1, trunc_idx1) = generating_current_data(ibis_data, time, corner, waveform1, truncation)
-    (i_pu2, i_pd2, i_pc2, i_gc2, i_rfix2, i_c_comp2, trunc_idx2) = generating_current_data(ibis_data, time, corner, waveform2, truncation)
+    (i_pu1, i_pd1, i_pc1, i_gc1, i_rfix1, i_c_comp1, trunc_idx1) = generate_current_data(ibis_data, time, corner, waveform1, truncation)
+    (i_pu2, i_pd2, i_pc2, i_gc2, i_rfix2, i_c_comp2, trunc_idx2) = generate_current_data(ibis_data, time, corner, waveform2, truncation)
 
     # creating a k-parameters array with columns [time, k_u, k_d]
     if min(trunc_idx1, trunc_idx2)>0:
@@ -498,7 +498,7 @@ def solve_k_params_output_open_drain(ibis_data, corner=1, waveform_type="Rising"
     array_size = np.shape(time)[0]
 
     # Getting the device and clamp current waveforms based on the new time series
-    (i_pu1, i_pd1, i_pc1, i_gc1, i_rfix1, i_c_comp1) = generating_current_data(ibis_data, time, corner, waveform1, truncation)
+    (i_pu1, i_pd1, i_pc1, i_gc1, i_rfix1, i_c_comp1) = generate_current_data(ibis_data, time, corner, waveform1, truncation)
 
     # creating a k-parameters array with columns [time, k_d]
     k_param = np.zeros([array_size, 2])
@@ -576,7 +576,7 @@ def find_waveform_cutoff_for_truncation(vt, diff_to_trim):
     is within a specified difference from the sample before based on percentage of the value range of the waveform.
 
         Parameters:
-            k_param: numpy array - 2 or 3 columns: [time, Ku, Kd] or [time, K]
+            vt: voltage waveform 
             diff_to_trim: diff_to_trim value to decide if sample is redundant
 
         Returns:
