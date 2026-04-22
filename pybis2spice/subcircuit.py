@@ -17,6 +17,11 @@ import numpy as np
 from .data_model import DataModel, get_reference, solve_k_params_output_open_drain, solve_k_params_output, compress_param, find_waveform_cutoff_for_truncation
 from .version import get_version
 
+from typing import Literal
+
+_CORNER = Literal['Typical', 'WeakSlow', 'FastStrong']
+_IO_TYPE = Literal['Input', 'Output']
+
 # IBIS Data File Column Indexes for Waveform Tables
 _TIME = 0
 _KU = 1
@@ -24,7 +29,7 @@ _KD = 2
 _KD_OD = 1
 
 
-def convert_corner_str_to_index(corner):
+def convert_corner_str_to_index(corner:_CORNER):
     """
     Coverts the corner string into an index number used to reference the arrays within pybis2spice methods
     Parameters:
@@ -44,7 +49,7 @@ def convert_corner_str_to_index(corner):
     return index
 
 
-def spice_header_info(ibis_data, corner, extra_info=""):
+def spice_header_info(ibis_data:DataModel, corner:_CORNER, extra_info=""):
     """
     Returns a header string for the ibis file. Helps create a comment on the SPICE subcircuit file
 
@@ -67,7 +72,7 @@ def spice_header_info(ibis_data, corner, extra_info=""):
     return st
 
 
-def spice_rlc_netlist(ibis_data, corner, pin_name):
+def spice_rlc_netlist(ibis_data:DataModel, corner:_CORNER, pin_name:str):
     """
     Returns a netlist string for the r_pkg, l_pkg,  c_comp
 
@@ -121,7 +126,7 @@ def spice_rlc_netlist(ibis_data, corner, pin_name):
     return st
 
 
-def define_pwr_and_gnd_clamps(ibis_data, corner, ng=False):
+def define_pwr_and_gnd_clamps(ibis_data:DataModel, corner:_CORNER, ng=False):
     """
     Arbitrary Source definition for power and ground clamp
     Parameters:
@@ -164,7 +169,7 @@ def define_pwr_and_gnd_clamps(ibis_data, corner, ng=False):
     return return_val
 
 
-def define_pullup_and_pulldown_devices(ibis_data, corner, ng=False):
+def define_pullup_and_pulldown_devices(ibis_data:DataModel, corner:_CORNER, ng=False):
     """
     Arbitrary Source definition for pullup and pulldown devices
     Parameters:
@@ -204,7 +209,7 @@ def define_pullup_and_pulldown_devices(ibis_data, corner, ng=False):
     return return_val
 
 
-def create_input_model(ibis_data, corner, io_type, ng=False) -> str:
+def create_input_model(ibis_data:DataModel, corner:_CORNER, io_type:_IO_TYPE, ng=False) -> str:
     """
     Creates a SPICE generic subcircuit model.
     Generic models are simple and only supports a single oscillation pulse with a given frequency
@@ -233,7 +238,7 @@ def create_input_model(ibis_data, corner, io_type, ng=False) -> str:
         raise e
     return spice_str
 
-def create_generic_output_model(ibis_data, corner, io_type, truncation) -> str:
+def create_generic_output_model(ibis_data:DataModel, corner:_CORNER, io_type:_IO_TYPE, truncation) -> str:
     """
     Creates a SPICE generic subcircuit model.
     Generic models are simple and only supports a single oscillation pulse with a given frequency
@@ -339,7 +344,7 @@ def ltspice_stimulus_netlist_setup():
     return setup_str
 
 
-def create_ltspice_output_model(ibis_data, corner, io_type, truncation):
+def create_ltspice_output_model(ibis_data:DataModel, corner:_CORNER, io_type:_IO_TYPE, truncation):
     """
     Creates a SPICE subcircuit model designed for LTSpice.
     LTSpice specific models provide extra functionality to manipulate the waveform stimulus of the output
@@ -471,7 +476,7 @@ def create_ltspice_output_model(ibis_data, corner, io_type, truncation):
 
     return spice_str
 
-def create_ltspice_symbol(ibis_data, corner, model_path, io_type):
+def create_ltspice_symbol(ibis_data:DataModel, corner:_CORNER, model_path:str, io_type:_IO_TYPE):
     """
     Creates an LTSpice symbol for the given model_path within the model_path directory
     This helps with the relative referencing of the model_path within the symbol file.
@@ -594,18 +599,21 @@ def ngspice_stimulus_netlist_setup():
 
     return setup_str
 
-def create_ngspice_output_model(ibis_data, corner, io_type, truncation):
+def create_ngspice_output_model(
+        ibis_data:DataModel, corner:_CORNER, 
+        io_type:_IO_TYPE, truncation:int
+        ):
     """
     Creates a SPICE subcircuit model designed for ngSPICE.
     ngSPICE specific models provide extra functionality to manipulate the waveform stimulus of the output
 
     Parameters:
-        ibis_data - a DataModel object (defined in pybis2spice.py)
+        ibis_data - a DataModel object (defined in data_model.py)
         corner - "Typical", "WeakSlow" or "FastStrong"
         io_type - "Input" or "Output"
-        output_filepath - path of output file
+        truncation - percentage in integer form for truncation tolerance
 
-    Returns 0 if there are no errors in the creation
+    Returns the created spice string
     """
 
     try:
