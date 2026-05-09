@@ -20,9 +20,10 @@
 # ---------------------------------------------------------------------------
 import sys
 import numpy as np
-from ecdtools import ibis as ecd
-from typing import List, Tuple
-
+from numpy.typing import NDArray
+from ecdtools import ibis as ecd # type:ignore
+from typing import List, Tuple, Optional
+import warnings
 
 # ---------------------------------------------------------------------------
 # Create some data model classes for convenient data referencing
@@ -81,13 +82,15 @@ class DataModel(object):
 
         try:
             self.file = ibis_file
-            self.file_name: str = ibis_file.file_name
+            self.file_name: str|None = ibis_file.file_name
             self.model: ecd.Model  = ibis_file.get_model_by_name(model_name)
             self.component: ecd.Component = ibis_file.get_component_by_name(component_name)
+            if self.model.model_type is None:
+                raise LookupError("Chosen model has no model type in file and so cannot be intepreted.")
             self.model_type: str = self.model.model_type
 
-            self.enable: str = self.model.enable
-            self.polarity: str = self.model.polarity
+            self.enable: str|None = self.model.enable
+            self.polarity: str|None = self.model.polarity
             
             self.v_ref = self.model.vref
             self.r_pkg = extract_range_param(self.component.package.r_pkg)
@@ -110,22 +113,26 @@ class DataModel(object):
             
             if not self.model.rising_waveforms is None:
                 self.vt_rising = extract_waveforms(self.model.rising_waveforms)
-            else:
+            elif not self.v_range is None and not self.ramp is None:
                 self.vt_rising = [
                     generate_ramp(
                         ramp_rate=self.ramp[0], v_high=max([self.v_range, 3]), 
                         v_low=min([self.v_range, 0]), ramp_type='Rising'
                         )
                     ]
+            else:
+                raise LookupError("Imported IBIS File does not contain sufficient rising waveform information to define rising waveform.")
             if not self.model.falling_waveforms is None:
                 self.vt_falling = extract_waveforms(self.model.falling_waveforms)
-            else:
+            elif not self.ramp is None:
                 self.vt_falling = [
                     generate_ramp(
                         ramp_rate=self.ramp[1], v_high=max([self.v_range, 3]), 
                         v_low=min([self.v_range, 0]), ramp_type='Falling'
                         )
                     ]
+            else:
+                raise LookupError("Imported IBIS File does not contain sufficient falling waveform information to define falling waveform.")
 
         except Exception as error:
             print(error)
@@ -151,10 +158,10 @@ class DataModel(object):
               f'> c_comp: {self.c_comp}\n\n'
 
         st += f'iv data:\n'
-        st += f'> pullup data size: {np.shape(self.iv_pullup)}\n' \
-              f'> pulldown data size: {np.shape(self.iv_pulldown)}\n'
-        st += f'> pwr clamp data size: {np.shape(self.iv_pwr_clamp)}\n' \
-              f'> gnd clamp data size: {np.shape(self.iv_gnd_clamp)}\n\n'
+        st += f'> pullup data size: {np.shape(self.iv_pullup) if not self.iv_pullup is None else 'NA'}\n' \
+              f'> pulldown data size: {np.shape(self.iv_pulldown) if not self.iv_pulldown is None else 'NA'}\n'
+        st += f'> pwr clamp data size: {np.shape(self.iv_pwr_clamp) if not self.iv_pwr_clamp is None else 'NA'}\n' \
+              f'> gnd clamp data size: {np.shape(self.iv_gnd_clamp) if not self.iv_gnd_clamp is None else 'NA'}\n\n'
 
         if self.vt_rising:
             rising_str = ""
@@ -179,7 +186,7 @@ class DataModel(object):
 # Main Calculation Helper Functions
 # ---------------------------------------------------------------------------
 
-def extract_range_param(obj):
+def extract_range_param(obj)->Optional[NDArray]:
     """
     takes a TypMinMax object from the ecdtools and returns a numpy array organised as [Typ, Min, Max]
     """
@@ -199,6 +206,7 @@ def extract_range_param(obj):
             arr = None
 
     except:
+        # TODO: Implement logic to constrain whether a value should allow a NoneType or not 
         arr = None
 
     return arr
@@ -208,6 +216,7 @@ def extract_iv_table(iv_data: List[Tuple[str|float]]|None):
     """
     returns a IV numpy array of the ecdtools object model-iv data
     """
+    # TODO None typing in parameter should be controlled elsewhere
     arr = None
     if iv_data is not None:
         arr = np.asarray(iv_data, dtype='float64')
@@ -215,15 +224,23 @@ def extract_iv_table(iv_data: List[Tuple[str|float]]|None):
         arr = arr[arr[:, 0].argsort()]
     return arr
 
-def extract_ramp_data(ramp: ecd.Ramp):
+def extract_ramp_data(ramp: ecd.Ramp|None):
     """
     returns a tuple of the ecdtools object model ramp data in the order: rising ramp rate (typ, min, max), falling ramp rate (typ, min, max), r_load
     """
     ramp_dat = None
-    if ramp is not None:
-        dv_dt_f = np.array([(val[0], val[1]) if val is not None else (None, None) for val in ramp.dv_dt_f], dtype='float64')
-        dv_dt_r = np.array([(val[0], val[1]) if val is not None else (None, None) for val in ramp.dv_dt_r], dtype='float64')
-        r_load = ramp.r_load if not ramp.r_load is None else 50.0 # default load is 50 Ohms if not defined as per IBIS 7.2
+    if not ramp is None:
+        dv_dt_f: NDArray = np.array(
+            [
+                (val[0], val[1]) if val is not None else (None, None) for val in ramp.dv_dt_f
+            ], dtype='float64'
+            ) 
+        dv_dt_r: NDArray = np.array(
+            [
+                (val[0], val[1]) if val is not None else (None, None) for val in ramp.dv_dt_r
+            ], dtype='float64'
+            )
+        r_load: float = ramp.r_load if not ramp.r_load is None else 50.0 # default load is 50 Ohms if not defined as per IBIS 7.2
         ramp_dat = (dv_dt_r, dv_dt_f, r_load)
     return ramp_dat
 
@@ -256,6 +273,8 @@ def generate_ramp(ramp_rate: Tuple[float, float], v_high:float = 1.2, v_low:floa
         v_20 = (v_high-v_low)*0.8+v_low
         v_80 = v_20-ramp_rate[0]
         v_start = v_high 
+    else:
+        raise ValueError(f"Invalid Ramp Type: {ramp_type}")
     ramp = [[v_start, 0]]
     t_start_ramp = ramp_rate[1]/2
     ramp.append([v_20, t_start_ramp])
@@ -369,12 +388,22 @@ def extract_waveforms(waveform_data: List[ecd.Waveform]) -> List[Waveform]:
     :return: List of waveforms in Waveform Object format
     :rtype: List[Waveform]
     """
-    if waveform_data[0].v_fixture.typical == 0:
-        waveform_data[0].v_fixture = waveform_data[1].v_fixture
+    if waveform_data[0].v_fixture.minimum is None and not waveform_data[1].v_fixture.minimum is None:
+        waveform_data[0].v_fixture.minimum = waveform_data[0].v_fixture.typical
+    if waveform_data[0].v_fixture.maximum is None and not waveform_data[1].v_fixture.maximum is None:
+        waveform_data[0].v_fixture.maximum = waveform_data[0].v_fixture.typical
     return [Waveform(data) for data in waveform_data]
 
 
-def generate_current_data(ibis_data: DataModel, time: np.ndarray, corner: int, waveform_obj: Waveform, truncation: float):
+def generate_current_data(
+        ibis_data: DataModel, time: np.ndarray, 
+        corner: int, waveform_obj: Waveform, 
+        truncation: float
+        )-> Tuple[Tuple[
+            NDArray[np.float64], NDArray[np.float64],
+            NDArray[np.float64], NDArray[np.float64], 
+            NDArray[np.float64], NDArray[np.float64]],
+            int]:
     """
     Generates the current waveforms for the devices and clamps with respect to the given time array
 
@@ -386,7 +415,7 @@ def generate_current_data(ibis_data: DataModel, time: np.ndarray, corner: int, w
         truncation: cutoff percentage for truncating the end of the waveform
 
     Returns:
-        tuple of values (i_pu, i_pd, i_pc, i_gc, i_out, i_c_comp)
+        tuple of values (i_pu, i_pd, i_pc, i_gc, i_rfix, i_c_comp)
         each value is a numpy array of a current with respect to the given time array
             i_pu - pullup device current
             i_pd - pulldown device current
@@ -394,6 +423,7 @@ def generate_current_data(ibis_data: DataModel, time: np.ndarray, corner: int, w
             i_gc - ground clamp device current
             i_rfix - current through the r_fix
             i_c_comp - current through the die-capacitance (c_comp)
+        trunc_idx: integer index of waveform index to truncate the waveform to
     """
 
     # Define some constants to help with readability. This represents the column indexes for the relevant data
@@ -402,10 +432,9 @@ def generate_current_data(ibis_data: DataModel, time: np.ndarray, corner: int, w
     # Get the voltage waveform corresponding to the given time array
     vt = np.interp(time, waveform_obj.data[:, _TIME], waveform_obj.data[:, corner])
 
+    trunc_idx=0
     if truncation>0:
         trunc_idx = find_waveform_cutoff_for_truncation(vt, truncation)
-    else:
-        trunc_idx=0
 
     pullup_ref = get_reference(ibis_data.pullup_ref, ibis_data.v_range, corner)
     pulldown_ref = get_reference(ibis_data.pulldown_ref, 0, corner)
@@ -428,10 +457,10 @@ def generate_current_data(ibis_data: DataModel, time: np.ndarray, corner: int, w
     # Current through the die capacitance (c_comp) --> i_c_comp = c_comp * dvt/dt
     i_c_comp = ibis_data.c_comp[corner - 1] * differentiate(vt, time[0:len(vt)])
 
-    return i_pu, i_pd, i_pc, i_gc, i_rfix, i_c_comp, trunc_idx
+    return (i_pu, i_pd, i_pc, i_gc, i_rfix, i_c_comp), trunc_idx
 
 
-def solve_k_params_output(ibis_data, corner=1, waveform_type="Rising", truncation=0):
+def solve_k_params_output(ibis_data, corner=1, waveform_type="Rising", truncation=0) -> NDArray[np.float64]:
     """
     Solves the k-parameters for the ibis model for any 2 or 3-state output buffer
 
@@ -461,8 +490,8 @@ def solve_k_params_output(ibis_data, corner=1, waveform_type="Rising", truncatio
     time = np.unique(time)
 
     # Getting the device and clamp current waveforms based on the new time series
-    (i_pu1, i_pd1, i_pc1, i_gc1, i_rfix1, i_c_comp1, trunc_idx1) = generate_current_data(ibis_data, time, corner, waveform1, truncation)
-    (i_pu2, i_pd2, i_pc2, i_gc2, i_rfix2, i_c_comp2, trunc_idx2) = generate_current_data(ibis_data, time, corner, waveform2, truncation)
+    (i_pu1, i_pd1, i_pc1, i_gc1, i_rfix1, i_c_comp1), trunc_idx1 = generate_current_data(ibis_data, time, corner, waveform1, truncation)
+    (i_pu2, i_pd2, i_pc2, i_gc2, i_rfix2, i_c_comp2), trunc_idx2 = generate_current_data(ibis_data, time, corner, waveform2, truncation)
 
     # creating a k-parameters array with columns [time, k_u, k_d]
     if min(trunc_idx1, trunc_idx2)>0:
@@ -485,7 +514,7 @@ def solve_k_params_output(ibis_data, corner=1, waveform_type="Rising", truncatio
     return k_param
 
 
-def solve_k_params_output_open_drain(ibis_data, corner=1, waveform_type="Rising", truncation=0):
+def solve_k_params_output_open_drain(ibis_data, corner=1, waveform_type="Rising", truncation=0) -> NDArray[np.float64]:
     """
     Solves the k-parameters for the ibis model for any 2 or 3-state output buffer
 
@@ -510,7 +539,7 @@ def solve_k_params_output_open_drain(ibis_data, corner=1, waveform_type="Rising"
     array_size = np.shape(time)[0]
 
     # Getting the device and clamp current waveforms based on the new time series
-    (i_pu1, i_pd1, i_pc1, i_gc1, i_rfix1, i_c_comp1) = generate_current_data(ibis_data, time, corner, waveform1, truncation)
+    (i_pu1, i_pd1, i_pc1, i_gc1, i_rfix1, i_c_comp1), trunc_idx = generate_current_data(ibis_data, time, corner, waveform1, truncation)
 
     # creating a k-parameters array with columns [time, k_d]
     k_param = np.zeros([array_size, 2])
@@ -542,7 +571,7 @@ def differentiate(y, x):
     return dy_dx
 
 
-def compress_param(k_param, threshold=1e-6):
+def compress_param(k_param, threshold=1e-6) -> Optional[NDArray]:
     """
     Compresses the k_parameter waveform by removing redundant samples
     Remove any samples that do not change in value between subsequent samples by more than the given threshold
@@ -582,7 +611,7 @@ def compress_param(k_param, threshold=1e-6):
 
     return k_comp
 
-def find_waveform_cutoff_for_truncation(vt, diff_to_trim):
+def find_waveform_cutoff_for_truncation(vt, diff_to_trim)-> int:
     """
     Truncates the k_parameter waveform by removing samples from the end of the waveform till the last sample 
     is within a specified difference from the sample before based on percentage of the value range of the waveform.
@@ -601,3 +630,5 @@ def find_waveform_cutoff_for_truncation(vt, diff_to_trim):
             idx+=1
         else:
             return idx-1
+    warnings.warn("Unable to perform truncation on this waveform")
+    return 0

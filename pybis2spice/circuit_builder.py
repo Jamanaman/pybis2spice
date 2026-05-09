@@ -1,13 +1,9 @@
 from . import subcircuit as sckt
 from .data_model import DataModel
 
-from typing import Literal
-
-_CORNER = Literal['Typical', 'WeakSlow', 'FastStrong']
-
 def generate_spice_model(
-        io_type: str, subcircuit_type:str, ibis_data: DataModel, 
-        corner: _CORNER, output_filepath: str, truncation: int
+        io_type: sckt._IO_TYPE, subcircuit_type:sckt._SIMULATOR, ibis_data: DataModel, 
+        corner: sckt._CORNER, output_filepath: str, truncation: int
         ):
     """
     Wrapper around the subcircuit file creation functions. Calls the relevant function i.e. LTSpice or Generic
@@ -45,8 +41,8 @@ def generate_spice_model(
         raise e
 
 def generate_diff_spice_model(
-        io_type: str, subcircuit_type:str, ibis_data_p1: DataModel, 
-        ibis_data_p2: DataModel, corner: _CORNER, output_filepath: str, 
+        io_type: sckt._IO_TYPE, subcircuit_type: sckt._SIMULATOR, ibis_data_p1: DataModel, 
+        ibis_data_p2: DataModel, corner: sckt._CORNER, output_filepath: str, 
         truncation: int
         ):
     try:

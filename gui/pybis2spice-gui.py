@@ -8,26 +8,25 @@ A tkinter GUI for helping users to convert IBIS models into SPICE models
 # ---------------------------------------------------------------------------
 import matplotlib.pyplot as plt
 
-from pybis2spice import data_model
-from pybis2spice import plot
-from pybis2spice import version
-from pybis2spice import subcircuit
+from pybis2spice import data_model as dm, plot, circuit_builder as ckt_build, subcircuit as sckt, version
+import img
 from ecdtools import ibis as ecd
 import tkinter as tk
 from tkinter import ttk
 from tkinter import messagebox
 from tkinter import filedialog
 from tktooltip import ToolTip
-from matplotlib.backends.backend_tkagg import (FigureCanvasTkAgg, NavigationToolbar2Tk)
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from matplotlib.backends._backend_tk import NavigationToolbar2Tk
 import numpy as np
 import time
 import logging
 import webbrowser
 import urllib.request
-import img
 import re
 import os
 import platform
+from typing import List
 
 logging.basicConfig(level=logging.INFO)
 ibis_file = None  # The ecdtools ibis_model object
@@ -57,7 +56,7 @@ def check_latest_version():
     return latest_version
 
 
-def check_supported_model_type(ibis_data):
+def check_supported_model_type(ibis_data: dm.DataModel):
     # Check that model type is supported by this tool
     # Check if model_type is supported
     model_type = ""
@@ -75,7 +74,7 @@ def check_supported_model_type(ibis_data):
     return supported
 
 
-def validate_type(ibis_data, io_type):
+def validate_type(ibis_data: dm.DataModel, io_type: sckt._IO_TYPE):
     # Check that io type selected matches the model_type
     # Returns True if it passes validation
 
@@ -183,7 +182,7 @@ def create_subcircuit_file_callback():
 
     main_window.config(cursor="wait")
     global ibis_file
-    ibis_data = data_model.DataModel(ibis_file, model_name, component_name)
+    ibis_data = dm.DataModel(ibis_file, model_name, component_name)
     main_window.update()
     time.sleep(0.01)
     main_window.config(cursor="")
@@ -227,36 +226,35 @@ def create_subcircuit_file(ibis_data, subcircuit_type, corner, io_type, truncati
                                         title='Choose a file',
                                         filetypes=[("Subcircuit Files", ".sub")],
                                         initialfile=f"{filename}")
+        if not file is None:
+            file = file.name
 
     # If file/directory was chosen by user
     if file:
         if corner == "All":
             logging.info(f"Chosen Directory: {file}")
 
-            corners = ["WeakSlow", "Typical", "FastStrong"]
+            corners:List[sckt._CORNER] = ["WeakSlow", "Typical", "FastStrong"]
             filepaths = []
-            generate_model_status = 0
             for _corner in corners:
                 filename = f'{ibis_data.model_name}-{io_type}-{_corner}.sub'
                 filepath = os.path.join(file, filename)
                 filepaths.append(filepath)
                 logging.info(f"Creating subcircuit for {_corner} corner at {filepath}")
-                ret_val = subcircuit.generate_spice_model(io_type=io_type,
+                fp_out = ckt_build.generate_spice_model(io_type=io_type,
                                                           subcircuit_type=subcircuit_type,
                                                           ibis_data=ibis_data,
                                                           corner=_corner,
                                                           output_filepath=filepath,
                                                           truncation=truncation)
-                generate_model_status += ret_val
 
-            if generate_model_status == 0:
-                message_success = f"SPICE subcircuit models successfully created at:\n{file}"
+                message_success = f"SPICE subcircuit models successfully created at:\n{fp_out}"
 
                 # Create symbol
                 if subcircuit_type == "LTSpice":
-                    symbol_file1 = subcircuit.create_ltspice_symbol(ibis_data, "WeakSlow", filepaths[0], io_type)
-                    symbol_file2 = subcircuit.create_ltspice_symbol(ibis_data, "Typical", filepaths[1], io_type)
-                    symbol_file3 = subcircuit.create_ltspice_symbol(ibis_data, "FastStrong", filepaths[2], io_type)
+                    symbol_file1 = sckt.create_ltspice_symbol(ibis_data, "WeakSlow", filepaths[0], io_type)
+                    symbol_file2 = sckt.create_ltspice_symbol(ibis_data, "Typical", filepaths[1], io_type)
+                    symbol_file3 = sckt.create_ltspice_symbol(ibis_data, "FastStrong", filepaths[2], io_type)
 
                     logging.info(f"LTSpice Symbol created at: {symbol_file1}")
                     logging.info(f"LTSpice Symbol created at: {symbol_file2}")
@@ -276,24 +274,24 @@ def create_subcircuit_file(ibis_data, subcircuit_type, corner, io_type, truncati
                 logging.error(message_error)
 
         else:  # If a specific corner was chosen
-            logging.info(f"Chosen File: {file.name}")
+            logging.info(f"Chosen File: {file}")
             # Create the subcircuit file
-            generate_model_status = subcircuit.generate_spice_model(io_type=io_type,
+            generate_model_status = ckt_build.generate_spice_model(io_type=io_type,
                                                                     subcircuit_type=subcircuit_type,
                                                                     ibis_data=ibis_data,
                                                                     corner=corner,
-                                                                    output_filepath=file.name,
+                                                                    output_filepath=file,
                                                                     truncation=truncation)
-            if generate_model_status == 0:
-                message_success = f"SPICE subcircuit model successfully created at:\n{file.name}"
+            if len(generate_model_status) > 0:
+                message_success = f"SPICE subcircuit model successfully created at:\n{file}"
 
                 # Create symbol
                 if subcircuit_type == "LTSpice":
-                    symbol_file = subcircuit.create_ltspice_symbol(ibis_data, corner, file.name, io_type)
+                    symbol_file = sckt.create_ltspice_symbol(ibis_data, corner, file, io_type)
                     logging.info(f"LTSpice Symbol created at: {symbol_file}")
                     message_success += f"\n\nLTSpice symbol also created successfully at:\n{symbol_file}\n"
 
-                warnings = get_warnings_from_file([file.name])
+                warnings = get_warnings_from_file([file])
                 if warnings != "":
                     message_success += f"\n\nWARNINGS within the SPICE subcircuit file: \n"
                     message_success += f"{warnings}"
@@ -358,7 +356,7 @@ def check_model_callback():
     main_window.config(cursor="wait")
 
     global ibis_file
-    ibis_data = data_model.DataModel(ibis_file, model_name, component_name)
+    ibis_data = dm.DataModel(ibis_file, model_name, component_name)
 
     main_window.update()
     time.sleep(0.1)
@@ -375,7 +373,7 @@ def check_model_callback():
 # Check Model Window
 # ---------------------------------------------------------------------------
 
-def check_model_window(ibis_data: data_model.DataModel):
+def check_model_window(ibis_data: dm.DataModel):
     data_window = tk.Toplevel(main_window)
     data_window.geometry(f"+{main_window.winfo_rootx() + 50}+{main_window.winfo_rooty() + 50}")
     data_window.title(f"Check IBIS Model - {ibis_data.model_name}")
@@ -474,7 +472,7 @@ def check_model_window(ibis_data: data_model.DataModel):
         rv_array[:, 3] = np.absolute(ibis_data.iv_pullup[:, 0] / ibis_data.iv_pullup[:, 3])  # max
 
         # Remove values outside the 0 - VCC range
-        vcc = data_model.get_reference(ibis_data.pullup_ref, ibis_data.v_range, 3)
+        vcc = dm.get_reference(ibis_data.pullup_ref, ibis_data.v_range, 3)
         if vcc is not None:
             rv_array = rv_array[(np.logical_and(rv_array[:, 0] >= 0, rv_array[:, 0] <= vcc))]
         
@@ -496,7 +494,7 @@ def check_model_window(ibis_data: data_model.DataModel):
         rv_array[:, 3] = np.absolute(ibis_data.iv_pulldown[:, 0] / ibis_data.iv_pulldown[:, 3])  # max
 
         # Remove values outside the 0 - VCC range
-        vcc = data_model.get_reference(ibis_data.pullup_ref, ibis_data.v_range, 3)
+        vcc = dm.get_reference(ibis_data.pullup_ref, ibis_data.v_range, 3)
         if vcc is not None:
             rv_array = rv_array[(np.logical_and(rv_array[:, 0] >= 0, rv_array[:, 0] <= vcc))]
 

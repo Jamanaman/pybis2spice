@@ -21,6 +21,7 @@ from typing import Literal
 
 _CORNER = Literal['Typical', 'WeakSlow', 'FastStrong']
 _IO_TYPE = Literal['Input', 'Output']
+_SIMULATOR = Literal['Generic', 'ngSPICE', 'LTSpice']
 
 # IBIS Data File Column Indexes for Waveform Tables
 _TIME = 0
@@ -818,7 +819,11 @@ def create_osc_waveform_pwl(t1, k1, t2, k2, ng=False):
             str_val: the string that goes into the oscillator PWL source
     """
     def _create_ngspice_osc_waveform_pwl(t1, k1, t2, k2):
-        str_val = ''
+        if t1[0] != 0:
+            str_val = f'0 {k1[0]}'
+        else:
+            str_val = ''
+
         for t, k in zip(t1, k1):
             str_val = str_val + f' {t} {k}'
 
@@ -876,6 +881,8 @@ def create_arb_bitstream_pwl(t1, k1, t2, k2, bitstream, ng=False):
             str_val = str_val + f' 0 {k2[-1]}'
             str_val = str_val + f' {{T_PERIOD*0.99}} {k2[-1]}'
         else:
+            if t1[0] != 0:
+                str_val = str_val + f' 0 {k1[0]}'
             for t, k in zip(t1, k1):
                 str_val = str_val + f' {t} {k}'
 
