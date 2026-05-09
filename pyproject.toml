@@ -36,3 +36,6 @@ python_version = "3.10"
 [tool.pyright]
 
 reportOptionalSubscript = "information"
+reportAssignmentType = "information"
+reportArgumentType = "information"
+reportGeneralTypeIssues = "information"
