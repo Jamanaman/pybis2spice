@@ -531,10 +531,17 @@ def create_ltspice_symbol(ibis_data:DataModel, corner:_CORNER, model_path:str, i
 
     return symbol_path
 
-def ngspice_stimulus_netlist_setup():
+def ngspice_stimulus_netlist_setup(stimulus: Optional[_STIMULUS]):
     """
     Returns a netlist string that sets up the ngSPICE stimulus sources for the model
     """
+    setup_str = ".model SW SW(Ron=1n Roff=1G Vt=.5 Vh=-.4)\n\n"
+    if not stimulus is None:
+        setup_str += f"V10 STIMULUS_EN {stimulus} 0 1"
+        setup_str += f"S1 Ku K_U_{stimulus} {stimulus} 0 SW\n"
+        setup_str += f"S7 Kd K_D_{stimulus} {stimulus} 0 SW\n"
+        return setup_str
+    
     # Setup the Stimulus setting options for the Pullup Waveform (Ku)
     setup_str = ".model SW SW(Ron=1n Roff=1G Vt=.5 Vh=-.4)\n\n"
     setup_str += "\n* Setup the Stimulus setting options for the Pullup Waveform (Ku)\n"
@@ -635,21 +642,24 @@ def create_ngspice_output_model(
         kf = compress_param(kf)
 
         parameter_info = "* Note: This model may only work in ngSPICE.\n"
-        parameter_info += "* Stimulus Options: \n" \
-                            "*\t1 - Oscillate at given freq and duty\n" \
-                            "*\t2 - Inverted Oscillate at given freq and duty\n" \
-                            "*\t3 - Rising Edge with delay\n" \
-                            "*\t4 - Falling Edge with delay\n" \
-                            "*\t5 - Stuck High\n" \
-                            "*\t6 - Stuck Low\n" \
-                            "*\t7 - Pseudorandom Bitstream\n" \
-                            "*\t8 - Inverted Pseudorandom Bitstream\n" \
-                            "*\t9 - HighZ (if 3-State output)\n\n"
+        if stimulus is None:
+            parameter_info += "* Stimulus Options: \n" \
+                                "*\t1 - Oscillate at given freq and duty\n" \
+                                "*\t2 - Inverted Oscillate at given freq and duty\n" \
+                                "*\t3 - Rising Edge with delay\n" \
+                                "*\t4 - Falling Edge with delay\n" \
+                                "*\t5 - Stuck High\n" \
+                                "*\t6 - Stuck Low\n" \
+                                "*\t7 - Pseudorandom Bitstream\n" \
+                                "*\t8 - Inverted Pseudorandom Bitstream\n" \
+                                "*\t9 - HighZ (if 3-State output)\n\n"
         header = spice_header_info(ibis_data, corner, extra_info=parameter_info)
         spice_str+=header
 
-        subcircuit = f'.SUBCKT {ibis_data.model_name}_{io_type}_{corner} '
-        subcircuit_params = f'OUT stimulus=1 freq=10Meg duty=0.5 delay=0 \n\n'
+        subcircuit = f'.SUBCKT {ibis_data.model_name}_{io_type}_{corner}'
+        if not stimulus is None:
+            subcircuit += stimulus
+        subcircuit_params = f' OUT stimulus=1 freq=10Meg duty=0.5 delay=0 \n\n'
 
         spice_str+=subcircuit + subcircuit_params
 
@@ -662,10 +672,8 @@ def create_ngspice_output_model(
         device_netlist = define_pullup_and_pulldown_devices(ibis_data, corner, ng=True)
         spice_str+=device_netlist
 
-        if stimulus is None:
-            stimulus_netlist = ngspice_stimulus_netlist_setup() # Look at this in more detail
-        else:
-            
+        stimulus_netlist = ngspice_stimulus_netlist_setup(stimulus=stimulus) # Look at this in more detail
+ 
         spice_str+=stimulus_netlist
 
         (offset_neg_r, offset_pos_r) = determine_crossover_offsets(kr)
@@ -702,54 +710,60 @@ def create_ngspice_output_model(
         spice_str+=f'.param stimulus_ = stimulus\n\n'
         spice_str+='.endif\n\n'
 
+        if stimulus is None or stimulus == 'OSC':
         # Oscillation Strings
-        if ibis_data.model_type.lower() == "open_drain":
-            kd_osc_str = create_osc_waveform_pwl(kr[:, _TIME], kr[:, _KD_OD], kf[:, _TIME], kf[:, _KD_OD], ng=True)
-        else:
-            ku_osc_str = create_osc_waveform_pwl(kr[:, _TIME], kr[:, _KU], kf[:, _TIME], kf[:, _KU], ng=True)
-            kd_osc_str = create_osc_waveform_pwl(kr[:, _TIME], kr[:, _KD], kf[:, _TIME], kf[:, _KD], ng=True)
-            spice_str+=f"V16 K_U_OSC 0 PWL({ku_osc_str}) r=0 td={{delay}}\n"
-            spice_str+=f"V17 K_U_HIGH 0 1\n"
-            spice_str+=f"V18 K_U_LOW 0 0\n"
+            if ibis_data.model_type.lower() == "open_drain":
+                kd_osc_str = create_osc_waveform_pwl(kr[:, _TIME], kr[:, _KD_OD], kf[:, _TIME], kf[:, _KD_OD], ng=True)
+            else:
+                ku_osc_str = create_osc_waveform_pwl(kr[:, _TIME], kr[:, _KU], kf[:, _TIME], kf[:, _KU], ng=True)
+                kd_osc_str = create_osc_waveform_pwl(kr[:, _TIME], kr[:, _KD], kf[:, _TIME], kf[:, _KD], ng=True)
+                spice_str+=f"V16 K_U_OSC 0 PWL({ku_osc_str}) r=0 td={{delay}}\n"
+        
+        spice_str+=f"V17 K_U_HIGH 0 1\n"
+        spice_str+=f"V18 K_U_LOW 0 0\n"
 
-        if ibis_data.model_type.lower() == "open_drain":
-            kd_inv_osc_str = create_osc_waveform_pwl(kf[:, _TIME], kf[:, _KD_OD], kr[:, _TIME], kr[:, _KD_OD], ng=True)
-        else:
-            ku_inv_osc_str = create_osc_waveform_pwl(kf[:, _TIME], kf[:, _KU], kr[:, _TIME], kr[:, _KU], ng=True)
-            kd_inv_osc_str = create_osc_waveform_pwl(kf[:, _TIME], kf[:, _KD], kr[:, _TIME], kr[:, _KD], ng=True)
-            spice_str+=f"V19 K_U_OSC_INV 0 PWL({ku_inv_osc_str}) r=0 td={{delay}}\n"
+        if stimulus is None or stimulus == 'OSC_INV':
+            if ibis_data.model_type.lower() == "open_drain":
+                kd_inv_osc_str = create_osc_waveform_pwl(kf[:, _TIME], kf[:, _KD_OD], kr[:, _TIME], kr[:, _KD_OD], ng=True)
+            else:
+                ku_inv_osc_str = create_osc_waveform_pwl(kf[:, _TIME], kf[:, _KU], kr[:, _TIME], kr[:, _KU], ng=True)
+                kd_inv_osc_str = create_osc_waveform_pwl(kf[:, _TIME], kf[:, _KD], kr[:, _TIME], kr[:, _KD], ng=True)
+                spice_str+=f"V19 K_U_OSC_INV 0 PWL({ku_inv_osc_str}) r=0 td={{delay}}\n"
 
-        # Rising Edge Strings
-        if ibis_data.model_type.lower() == "open_drain":
-            kdr_str = create_edge_waveform_pwl(kr[:, _TIME], kr[:, _KD_OD])
-        else:
-            kur_str = create_edge_waveform_pwl(kr[:, _TIME], kr[:, _KU])
-            kdr_str = create_edge_waveform_pwl(kr[:, _TIME], kr[:, _KD])
-            spice_str+=f"V20 K_U_RISE 0 PWL({kur_str}) td={{delay}}\n"
+        if stimulus is None or stimulus == 'RISE':
+            # Rising Edge Strings
+            if ibis_data.model_type.lower() == "open_drain":
+                kdr_str = create_edge_waveform_pwl(kr[:, _TIME], kr[:, _KD_OD])
+            else:
+                kur_str = create_edge_waveform_pwl(kr[:, _TIME], kr[:, _KU])
+                kdr_str = create_edge_waveform_pwl(kr[:, _TIME], kr[:, _KD])
+                spice_str+=f"V20 K_U_RISE 0 PWL({kur_str}) td={{delay}}\n"
+                
+        if stimulus is None or stimulus == 'FALL':
+            # Falling Edge Strings
+            if ibis_data.model_type.lower() == "open_drain":
+                kdf_str = create_edge_waveform_pwl(kf[:, _TIME], kf[:, _KD_OD])
+            else:
+                kuf_str = create_edge_waveform_pwl(kf[:, _TIME], kf[:, _KU])
+                kdf_str = create_edge_waveform_pwl(kf[:, _TIME], kf[:, _KD])
+                spice_str+=f"V21 K_U_FALL 0 PWL({kuf_str}) td={{delay}}\n"
 
-        # Falling Edge Strings
-        if ibis_data.model_type.lower() == "open_drain":
-            kdf_str = create_edge_waveform_pwl(kf[:, _TIME], kf[:, _KD_OD])
-        else:
-            kuf_str = create_edge_waveform_pwl(kf[:, _TIME], kf[:, _KU])
-            kdf_str = create_edge_waveform_pwl(kf[:, _TIME], kf[:, _KD])
-            spice_str+=f"V21 K_U_FALL 0 PWL({kuf_str}) td={{delay}}\n"
-
-        # Pseudorandom Strings
         bitstream = [random.randint(0, 1) for _ in range(127)]
-        if ibis_data.model_type.lower() == "open_drain":
-            kd_rand_str = create_arb_bitstream_pwl(kr[:, _TIME], kr[:, _KD_OD], kf[:, _TIME], kf[:, _KD_OD], bitstream, ng=True)
-        else:
-            ku_rand_str = create_arb_bitstream_pwl(kr[:, _TIME], kr[:, _KU], kf[:, _TIME], kf[:, _KU], bitstream, ng=True)
-            kd_rand_str = create_arb_bitstream_pwl(kr[:, _TIME], kr[:, _KD], kf[:, _TIME], kf[:, _KD], bitstream, ng=True)
-            spice_str+=f"V51 K_U_RAND 0 PWL({ku_rand_str}) r=0  td={{delay}}\n"
-
-        if ibis_data.model_type.lower() == "open_drain":
-            kd_inv_rand_str = create_arb_bitstream_pwl(kf[:, _TIME], kf[:, _KD_OD], kr[:, _TIME], kr[:, _KD_OD], bitstream, ng=True)
-        else:
-            ku_inv_rand_str = create_arb_bitstream_pwl(kf[:, _TIME], kf[:, _KU], kr[:, _TIME], kr[:, _KU], bitstream, ng=True)
-            kd_inv_rand_str = create_arb_bitstream_pwl(kf[:, _TIME], kf[:, _KD], kr[:, _TIME], kr[:, _KD], bitstream, ng=True)
-            spice_str+=f"V52 K_U_RAND_INV 0 PWL({ku_inv_rand_str}) r=0  td={{delay}}\n"
+        if stimulus is None or stimulus == 'RAND':
+            # Pseudorandom Strings
+            if ibis_data.model_type.lower() == "open_drain":
+                kd_rand_str = create_arb_bitstream_pwl(kr[:, _TIME], kr[:, _KD_OD], kf[:, _TIME], kf[:, _KD_OD], bitstream, ng=True)
+            else:
+                ku_rand_str = create_arb_bitstream_pwl(kr[:, _TIME], kr[:, _KU], kf[:, _TIME], kf[:, _KU], bitstream, ng=True)
+                kd_rand_str = create_arb_bitstream_pwl(kr[:, _TIME], kr[:, _KD], kf[:, _TIME], kf[:, _KD], bitstream, ng=True)
+                spice_str+=f"V51 K_U_RAND 0 PWL({ku_rand_str}) r=0  td={{delay}}\n"
+        if stimulus is None or stimulus == 'RAND_INV':
+            if ibis_data.model_type.lower() == "open_drain":
+                kd_inv_rand_str = create_arb_bitstream_pwl(kf[:, _TIME], kf[:, _KD_OD], kr[:, _TIME], kr[:, _KD_OD], bitstream, ng=True)
+            else:
+                ku_inv_rand_str = create_arb_bitstream_pwl(kf[:, _TIME], kf[:, _KU], kr[:, _TIME], kr[:, _KU], bitstream, ng=True)
+                kd_inv_rand_str = create_arb_bitstream_pwl(kf[:, _TIME], kf[:, _KD], kr[:, _TIME], kr[:, _KD], bitstream, ng=True)
+                spice_str+=f"V52 K_U_RAND_INV 0 PWL({ku_inv_rand_str}) r=0  td={{delay}}\n"
 
         # Setup the K-Parameter waveforms for the Pullup transistor (Kd)
         spice_str+=f"V36 K_D_OSC 0 PWL({kd_osc_str}) r=0 td={{delay}}\n"
