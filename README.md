@@ -7,7 +7,7 @@ A python tool that converts IBIS models to SPICE models. The ibis model types cu
 * I/O
 * Differential [WIP]
 
-This tool was originally developed and maintained by Kishan Amratia (https://github.com/kamratia1) but has since moved to a new repo and the project will be continued there for the foreseeable future.
+This tool was originally developed and maintained by Kishan Amratia (https://github.com/kamratia1) but has since moved to a new repo (https://github.com/Jamanaman/pybis2spice) and the project will be continued there for the foreseeable future.
 
 ## Usage
 The bin folder holds a zipped file for each released version containing a windows executable program that can be run standalone.
