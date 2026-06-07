@@ -1,7 +1,7 @@
 from . import subcircuit as sckt
 from .data_model import DataModel
 
-def generate_spice_model(
+def generate_spice_model_file(
         io_type: sckt._IO_TYPE, subcircuit_type:sckt._SIMULATOR, ibis_data: DataModel, 
         corner: sckt._CORNER, output_filepath: str, truncation: int
         ):

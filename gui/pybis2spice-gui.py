@@ -241,7 +241,7 @@ def create_subcircuit_file(ibis_data, subcircuit_type, corner, io_type, truncati
                 filepath = os.path.join(file, filename)
                 filepaths.append(filepath)
                 logging.info(f"Creating subcircuit for {_corner} corner at {filepath}")
-                fp_out = ckt_build.generate_spice_model(io_type=io_type,
+                fp_out = ckt_build.generate_spice_model_file(io_type=io_type,
                                                           subcircuit_type=subcircuit_type,
                                                           ibis_data=ibis_data,
                                                           corner=_corner,
@@ -276,7 +276,7 @@ def create_subcircuit_file(ibis_data, subcircuit_type, corner, io_type, truncati
         else:  # If a specific corner was chosen
             logging.info(f"Chosen File: {file}")
             # Create the subcircuit file
-            generate_model_status = ckt_build.generate_spice_model(io_type=io_type,
+            generate_model_status = ckt_build.generate_spice_model_file(io_type=io_type,
                                                                     subcircuit_type=subcircuit_type,
                                                                     ibis_data=ibis_data,
                                                                     corner=corner,
