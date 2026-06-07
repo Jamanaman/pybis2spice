@@ -17,11 +17,12 @@ import numpy as np
 from .data_model import DataModel, get_reference, solve_k_params_output_open_drain, solve_k_params_output, compress_param, find_waveform_cutoff_for_truncation
 from .version import get_version
 
-from typing import Literal
+from typing import Literal, Optional
 
 _CORNER = Literal['Typical', 'WeakSlow', 'FastStrong']
 _IO_TYPE = Literal['Input', 'Output']
 _SIMULATOR = Literal['Generic', 'ngSPICE', 'LTSpice']
+_STIMULUS = Literal['OSC', 'OSC_INV', 'HIGH', 'LOW', 'RISE', 'FALL', 'RAND', 'RAND_INV', 'HIGHZ']
 
 # IBIS Data File Column Indexes for Waveform Tables
 _TIME = 0
@@ -602,7 +603,8 @@ def ngspice_stimulus_netlist_setup():
 
 def create_ngspice_output_model(
         ibis_data:DataModel, corner:_CORNER, 
-        io_type:_IO_TYPE, truncation:int
+        io_type:_IO_TYPE, truncation:int,
+        stimulus: Optional[_STIMULUS]
         ):
     """
     Creates a SPICE subcircuit model designed for ngSPICE.
@@ -660,7 +662,10 @@ def create_ngspice_output_model(
         device_netlist = define_pullup_and_pulldown_devices(ibis_data, corner, ng=True)
         spice_str+=device_netlist
 
-        stimulus_netlist = ngspice_stimulus_netlist_setup() # Look at this in more detail
+        if stimulus is None:
+            stimulus_netlist = ngspice_stimulus_netlist_setup() # Look at this in more detail
+        else:
+            
         spice_str+=stimulus_netlist
 
         (offset_neg_r, offset_pos_r) = determine_crossover_offsets(kr)
