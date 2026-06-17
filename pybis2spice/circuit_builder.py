@@ -23,13 +23,13 @@ def generate_spice_model_file(
         spice_str = ''
         if io_type == "Output":
             if subcircuit_type == "Generic":
-                spice_str = sckt.create_generic_output_model(ibis_data, corner, io_type, truncation)
+                spice_str = sckt.create_generic_output_model(ibis_data, corner, truncation)
 
             if subcircuit_type == "LTSpice":
-                spice_str = sckt.create_ltspice_output_model(ibis_data, corner, io_type, truncation)
+                spice_str = sckt.create_ltspice_output_model(ibis_data, corner, truncation)
 
             if subcircuit_type == "ngSPICE":
-                spice_str = sckt.create_ngspice_output_model(ibis_data, corner, io_type, truncation)
+                spice_str = sckt.create_ngspice_output_model(ibis_data, corner, truncation)
 
         if io_type == "Input":
             spice_str = sckt.create_input_model(ibis_data, corner, io_type, ng=subcircuit_type=="ngSPICE")

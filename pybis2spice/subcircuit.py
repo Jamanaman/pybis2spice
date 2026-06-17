@@ -240,7 +240,7 @@ def create_input_model(ibis_data:DataModel, corner:_CORNER, io_type:_IO_TYPE, ng
         raise e
     return spice_str
 
-def create_generic_output_model(ibis_data:DataModel, corner:_CORNER, io_type:_IO_TYPE, truncation) -> str:
+def create_generic_output_model(ibis_data:DataModel, corner:_CORNER, truncation) -> str:
     """
     Creates a SPICE generic subcircuit model.
     Generic models are simple and only supports a single oscillation pulse with a given frequency
@@ -274,7 +274,7 @@ def create_generic_output_model(ibis_data:DataModel, corner:_CORNER, io_type:_IO
         header = spice_header_info(ibis_data, corner)
         spice_str+=(header)
 
-        spice_str+=f'.SUBCKT {ibis_data.model_name}-{io_type}-{corner} OUT params: freq=10Meg duty=0.5\n\n'
+        spice_str+=f'.SUBCKT {ibis_data.model_name}-Output-{corner} OUT params: freq=10Meg duty=0.5\n\n'
 
         rlc_netlist = spice_rlc_netlist(ibis_data, corner, pin_name="OUT")
         spice_str+=rlc_netlist
@@ -346,7 +346,7 @@ def ltspice_stimulus_netlist_setup():
     return setup_str
 
 
-def create_ltspice_output_model(ibis_data:DataModel, corner:_CORNER, io_type:_IO_TYPE, truncation):
+def create_ltspice_output_model(ibis_data:DataModel, corner:_CORNER, truncation):
     """
     Creates a SPICE subcircuit model designed for LTSpice.
     LTSpice specific models provide extra functionality to manipulate the waveform stimulus of the output
@@ -388,7 +388,7 @@ def create_ltspice_output_model(ibis_data:DataModel, corner:_CORNER, io_type:_IO
         header = spice_header_info(ibis_data, corner, extra_info=parameter_info)
         spice_str+=header
 
-        subcircuit = f'.SUBCKT {ibis_data.model_name}-{io_type}-{corner} '
+        subcircuit = f'.SUBCKT {ibis_data.model_name}-Output-{corner} '
         subcircuit_params = f'OUT params: stimulus=1 freq=10Meg duty=0.5 delay=0 \n\n'
 
         spice_str+=subcircuit + subcircuit_params
@@ -433,8 +433,6 @@ def create_ltspice_output_model(ibis_data:DataModel, corner:_CORNER, io_type:_IO
             spice_str+=f"V16 K_U_OSC 0 PWL REPEAT FOREVER ({ku_osc_str}) ENDREPEAT\n"
             spice_str+=f"V17 K_U_HIGH 0 1\n"
             spice_str+=f"V18 K_U_LOW 0 0\n"
-
-        
 
         if ibis_data.model_type.lower() == "open_drain":
             kd_inv_osc_str = create_osc_waveform_pwl(kf[:, _TIME], kf[:, _KD_OD], kr[:, _TIME], kr[:, _KD_OD])
@@ -609,9 +607,8 @@ def ngspice_stimulus_netlist_setup(stimulus: Optional[_STIMULUS]):
     return setup_str
 
 def create_ngspice_output_model(
-        ibis_data:DataModel, corner:_CORNER, 
-        io_type:_IO_TYPE, truncation:int,
-        stimulus: Optional[_STIMULUS]
+        ibis_data:DataModel, corner:_CORNER,
+        truncation:int, stimulus: Optional[_STIMULUS] = None
         ):
     """
     Creates a SPICE subcircuit model designed for ngSPICE.
@@ -658,7 +655,7 @@ def create_ngspice_output_model(
         header = spice_header_info(ibis_data, corner, extra_info=parameter_info)
         spice_str+=header
 
-        subcircuit = f'.SUBCKT {ibis_data.model_name}_{io_type}_{corner}'
+        subcircuit = f'.SUBCKT {ibis_data.model_name}_Output_{corner}'
         if not stimulus is None:
             subcircuit += stimulus
         subcircuit_params = f' OUT stimulus=1 freq=10Meg duty=0.5 delay=0 \n\n'
