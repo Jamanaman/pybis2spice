@@ -8,13 +8,11 @@ A tkinter GUI for helping users to convert IBIS models into SPICE models
 # ---------------------------------------------------------------------------
 import matplotlib.pyplot as plt
 
-from pybis2spice import data_model as dm, plot, circuit_builder as ckt_build, subcircuit as sckt, version
-import img
-from ecdtools import ibis as ecd
+from pybis2spice import data_model as dm, plot, circuit_builder as ckt_build, subcircuit as sckt, version, img
+from ecdtools import ibis as ecd #type:ignore
 import tkinter as tk
 from tkinter import ttk
-from tkinter import messagebox
-from tkinter import filedialog
+from tkinter import messagebox, filedialog
 from tktooltip import ToolTip
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.backends._backend_tk import NavigationToolbar2Tk
@@ -90,20 +88,18 @@ def validate_type(ibis_data: dm.DataModel, io_type: sckt._IO_TYPE):
         messagebox.showwarning(title="Model type not supported", message=message)
         logging.error(message)
 
-    io_validate = False
-    model_types_list = ["input", "i/o", "i/o_open_drain"]
+    valid = False
     if io_type == "Input":
-        for item in model_types_list:
+        for item in ["input", "i/o", "i/o_open_drain"]:
             if item == model_type.lower():
-                io_validate = True
+                valid = True
 
-    model_types_list = ["output", "i/o", "3-state", "open_drain", "i/o_open_drain"]
     if io_type == "Output":
-        for item in model_types_list:
+        for item in ["output", "i/o", "3-state", "open_drain", "i/o_open_drain"]:
             if item == model_type.lower():
-                io_validate = True
+                valid = True
 
-    if supported and not io_validate:
+    if supported and not valid:
         message = f"I/O Select is invalid with IBIS model type.\n"
         message += f"Selected Model Type: {ibis_data.model_type}\n"
         if io_type == "Input":
@@ -114,7 +110,7 @@ def validate_type(ibis_data: dm.DataModel, io_type: sckt._IO_TYPE):
         messagebox.showwarning(title="I/O mismatch", message=message)
         logging.error(message)
 
-    ret_val = supported and io_validate
+    ret_val = supported and valid
     return ret_val
 
 
@@ -175,10 +171,11 @@ def create_subcircuit_file_callback():
     ibis_file_path = entry.get()
     component_name = list_component.get(tk.ACTIVE)
     model_name = list_model.get(tk.ACTIVE)
-    io_type = radio_var3.get()
-    subcircuit_type = radio_var1.get()  # LTSpice or Generic
-    corner = radio_var2.get()
+    io_type = io_type_var.get()
+    subcircuit_type = simulator_var.get()  # LTSpice or Generic
+    corner = corner_var.get()
     truncation = input_var.get()
+    stimulus = stimulus_var.get()
 
     main_window.config(cursor="wait")
     global ibis_file
@@ -200,7 +197,7 @@ def create_subcircuit_file_callback():
             logging.info(f"Subcircuit Type: {subcircuit_type}")
             logging.info(f"Corner: {corner}")
             logging.info(f"I/O Select: {io_type}")
-            create_subcircuit_file(ibis_data, subcircuit_type, corner, io_type, truncation)
+            create_subcircuit_file(ibis_data, subcircuit_type, corner, io_type, stimulus, truncation)
 
 
 def get_warnings_from_file(filepaths):
@@ -216,7 +213,7 @@ def get_warnings_from_file(filepaths):
     return warnings
 
 
-def create_subcircuit_file(ibis_data, subcircuit_type, corner, io_type, truncation):
+def create_subcircuit_file(ibis_data, subcircuit_type, corner, io_type, stimulus, truncation):
 
     if corner == "All":
         file = filedialog.askdirectory(parent=main_window)
@@ -246,6 +243,7 @@ def create_subcircuit_file(ibis_data, subcircuit_type, corner, io_type, truncati
                                                           ibis_data=ibis_data,
                                                           corner=_corner,
                                                           output_filepath=filepath,
+                                                          stimulus=stimulus,
                                                           truncation=truncation)
 
                 message_success = f"SPICE subcircuit models successfully created at:\n{fp_out}"
@@ -281,7 +279,8 @@ def create_subcircuit_file(ibis_data, subcircuit_type, corner, io_type, truncati
                                                                     ibis_data=ibis_data,
                                                                     corner=corner,
                                                                     output_filepath=file,
-                                                                    truncation=truncation)
+                                                                    truncation=truncation,
+                                                                    stimulus=stimulus)
             if len(generate_model_status) > 0:
                 message_success = f"SPICE subcircuit model successfully created at:\n{file}"
 
@@ -804,10 +803,10 @@ if __name__ == '__main__':
     label3.place(x=10, y=10)
 
     # Radio Buttons for LTSpice vs Generic vs ngSPICE
-    radio_var1 = tk.StringVar()
-    radio1 = tk.Radiobutton(master=frame3, text="LTSpice", variable=radio_var1, value="LTSpice")
-    radio2 = tk.Radiobutton(master=frame3, text="Generic", variable=radio_var1, value="Generic")
-    radio3 = tk.Radiobutton(master=frame3, text="ngSPICE", variable=radio_var1, value="ngSPICE")
+    simulator_var = tk.StringVar()
+    radio1 = tk.Radiobutton(master=frame3, text="LTSpice", variable=simulator_var, value="LTSpice")
+    radio2 = tk.Radiobutton(master=frame3, text="Generic", variable=simulator_var, value="Generic")
+    radio3 = tk.Radiobutton(master=frame3, text="ngSPICE", variable=simulator_var, value="ngSPICE")
     radio1.select()  # Select LTSpice as default type
     radio1.place(x=170, y=10)
     radio2.place(x=250, y=10)
@@ -819,11 +818,11 @@ if __name__ == '__main__':
     # Radio Buttons for Corner Select
     label4 = tk.Label(master=frame3, text="Corner Select")
     label4.place(x=10, y=40)
-    radio_var2 = tk.StringVar()
-    radio3 = tk.Radiobutton(master=frame3, text="Weak-Slow", variable=radio_var2, value="WeakSlow")
-    radio4 = tk.Radiobutton(master=frame3, text="Typical", variable=radio_var2, value="Typical")
-    radio5 = tk.Radiobutton(master=frame3, text="Fast-Strong", variable=radio_var2, value="FastStrong")
-    radio6 = tk.Radiobutton(master=frame3, text="All", variable=radio_var2, value="All")
+    corner_var = tk.StringVar()
+    radio3 = tk.Radiobutton(master=frame3, text="Weak-Slow", variable=corner_var, value="WeakSlow")
+    radio4 = tk.Radiobutton(master=frame3, text="Typical", variable=corner_var, value="Typical")
+    radio5 = tk.Radiobutton(master=frame3, text="Fast-Strong", variable=corner_var, value="FastStrong")
+    radio6 = tk.Radiobutton(master=frame3, text="All", variable=corner_var, value="All")
     radio4.select()
     radio3.place(x=170, y=40)
     radio4.place(x=270, y=40)
@@ -838,9 +837,9 @@ if __name__ == '__main__':
     # Radio Buttons for Selecting Input or Output Model Type
     label5 = tk.Label(master=frame3, text="I/O Type")
     label5.place(x=10, y=70)
-    radio_var3 = tk.StringVar()
-    radio7 = tk.Radiobutton(master=frame3, text="Input", variable=radio_var3, value="Input")
-    radio8 = tk.Radiobutton(master=frame3, text="Output", variable=radio_var3, value="Output")
+    io_type_var = tk.StringVar()
+    radio7 = tk.Radiobutton(master=frame3, text="Input", variable=io_type_var, value="Input")
+    radio8 = tk.Radiobutton(master=frame3, text="Output", variable=io_type_var, value="Output")
     radio7.select()
     radio7.place(x=170, y=70)
     radio8.place(x=250, y=70)
@@ -851,7 +850,29 @@ if __name__ == '__main__':
     ToolTip(radio7, msg="subcircuit will be created for the input pin - no pullup/pulldown transistors", delay=0.2)
     ToolTip(radio8, msg="subcircuit will be created for the output pin - with pullup/pulldown transistors", delay=0.2)
 
+    stim_type_label = tk.Label(master=frame3, text="Stimulus Type")
+    stim_type_label.place(x=410, y=70)
+    stimulus_var = tk.StringVar()
+    stimulus_combo = ttk.Combobox(
+        master=frame3, 
+        values=[
+            'ALL', 'OSC', 'OSC_INV', 'HIGH', 'LOW', 'RISE', 
+            'FALL', 'RAND', 'RAND_INV', 'HIGHZ' # TODO: Add external trigger 
+        ],
+        textvariable=stimulus_var,
+        state='disabled'
+    )
+    stimulus_combo.place(x=530, y=70)
+    
+    def update_combo_state(*args): # Callback function for trace
+        if io_type_var.get() == 'Output':
+            stimulus_combo.configure(state="readonly")
+            stimulus_combo.set("ALL")
+        else:
+            stimulus_combo.configure(state="disabled")
+            stimulus_combo.set(None)
 
+    io_type_var.trace_add("write", update_combo_state)
 
     label6 = tk.Label(master=frame3, text="Truncate Rising/Falling Waveforms")
     label6.place(x=10, y=110)

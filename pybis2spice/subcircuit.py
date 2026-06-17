@@ -22,7 +22,7 @@ from typing import Literal, Optional, Callable, List
 _CORNER = Literal['Typical', 'WeakSlow', 'FastStrong']
 _IO_TYPE = Literal['Input', 'Output']
 _SIMULATOR = Literal['Generic', 'ngSPICE', 'LTSpice']
-_STIMULUS = Literal['OSC', 'OSC_INV', 'HIGH', 'LOW', 'RISE', 'FALL', 'RAND', 'RAND_INV', 'HIGHZ']
+_STIMULUS = Literal['ALL', 'OSC', 'OSC_INV', 'HIGH', 'LOW', 'RISE', 'FALL', 'RAND', 'RAND_INV', 'HIGHZ']
 
 # IBIS Data File Column Indexes for Waveform Tables
 _TIME = 0
@@ -86,6 +86,7 @@ def spice_rlc_netlist(ibis_data:DataModel, corner:_CORNER, pin_name:str):
     c_pkg = ibis_data.c_pkg[_INDEX]
     l_pkg = ibis_data.l_pkg[_INDEX]
     r_pkg = ibis_data.r_pkg[_INDEX]
+
     st = ""
 
     if c_pkg is None:
@@ -117,8 +118,16 @@ def spice_rlc_netlist(ibis_data:DataModel, corner:_CORNER, pin_name:str):
         st += f'* WARNING: Could not parse the R_pkg so has been set to a nominal of 0.01ohm\n'
     else:
         st += f'.param R_pkg = {r_pkg}\n'
-
-    st += f'.param C_comp = {ibis_data.c_comp[_INDEX]}\n\n'
+    if any(
+        [not c is None for c in 
+            [ibis_data.c_comp_pullup, ibis_data.c_comp_pulldown, 
+            ibis_data.c_comp_pwr_clamp, ibis_data.c_comp_gnd_clamp
+            ]
+        ]):
+        st += '.param C_comp = 0\n'
+        st += '* This model has specified C_Comp values for PU/PD networks and or clamps. These will be used instead of c_comp\n\n'
+    else:
+        st += f'.param C_comp = {ibis_data.c_comp[_INDEX]}\n\n'
 
     st += f'R1 {pin_name} MID {{R_pkg}}\n'
     st += f'L1 DIE MID {{L_pkg}}\n'
@@ -149,6 +158,8 @@ def define_pwr_and_gnd_clamps(ibis_data:DataModel, corner:_CORNER, ng=False):
     # Arbitrary Source definition for power and ground clamp
     if ibis_data.iv_pwr_clamp is not None:
         return_val += f'V1 PWR_CLAMP_REF 0 {pwr_clamp_ref}\n'
+        if not ibis_data.c_comp_pwr_clamp is None:
+            return_val += f'C11 DIE PWR_CLAMP_REF {ibis_data.c_comp_pwr_clamp[_INDEX]}'
         pwr_clamp_table_str = convert_iv_table_to_str(np.flip(pwr_clamp_ref - ibis_data.iv_pwr_clamp[:, 0]),
                                                       np.flip(ibis_data.iv_pwr_clamp[:, _CORNER_INDEX]))
         if ng:
@@ -159,6 +170,8 @@ def define_pwr_and_gnd_clamps(ibis_data:DataModel, corner:_CORNER, ng=False):
 
     if ibis_data.iv_gnd_clamp is not None:
         return_val += f'V2 GND_CLAMP_REF 0 {gnd_clamp_ref}\n'
+        if not ibis_data.c_comp_gnd_clamp is None:
+            return_val += f'C12 DIE GND_CLAMP_REF {ibis_data.c_comp_gnd_clamp[_INDEX]}'
         gnd_clamp_table_str = convert_iv_table_to_str(ibis_data.iv_gnd_clamp[:, 0] - gnd_clamp_ref,
                                                       ibis_data.iv_gnd_clamp[:, _CORNER_INDEX])
         if ng:
@@ -191,6 +204,8 @@ def define_pullup_and_pulldown_devices(ibis_data:DataModel, corner:_CORNER, ng=F
     # Arbitrary Source definition for pullup and pulldown devices
     if ibis_data.iv_pullup is not None:
         return_val += f'V3 PULLUP_REF 0 {pullup_ref}\n'
+        if not ibis_data.c_comp_pullup is None:
+            return_val += f'C13 DIE PULLUP_REF {ibis_data.c_comp_pullup[_INDEX]}'
         pullup_table_str = convert_iv_table_to_str(np.flip(pullup_ref - ibis_data.iv_pullup[:, 0]),
                                                    np.flip(ibis_data.iv_pullup[:, _CORNER_INDEX]))
         if ng:
@@ -201,6 +216,8 @@ def define_pullup_and_pulldown_devices(ibis_data:DataModel, corner:_CORNER, ng=F
 
     if ibis_data.iv_pulldown is not None:
         return_val += f'V4 PULLDOWN_REF 0 {pulldown_ref}\n'
+        if not ibis_data.c_comp_pulldown is None:
+            return_val += f'C14 DIE PULLDOWN_REF {ibis_data.c_comp_pulldown[_INDEX]}'
         pulldown_table_str = convert_iv_table_to_str(ibis_data.iv_pulldown[:, 0] - pulldown_ref,
                                                      ibis_data.iv_pulldown[:, _CORNER_INDEX])
         if ng:
@@ -240,7 +257,7 @@ def create_input_model(ibis_data:DataModel, corner:_CORNER, io_type:_IO_TYPE, ng
         raise e
     return spice_str
 
-def create_generic_output_model(ibis_data:DataModel, corner:_CORNER, truncation) -> str:
+def create_generic_output_model(ibis_data:DataModel, corner:_CORNER, truncation, stimulus: Optional[_STIMULUS] = None) -> str:
     """
     Creates a SPICE generic subcircuit model.
     Generic models are simple and only supports a single oscillation pulse with a given frequency
@@ -346,7 +363,7 @@ def ltspice_stimulus_netlist_setup():
     return setup_str
 
 
-def create_ltspice_output_model(ibis_data:DataModel, corner:_CORNER, truncation):
+def create_ltspice_output_model(ibis_data:DataModel, corner:_CORNER, truncation, stimulus: Optional[_STIMULUS] = None):
     """
     Creates a SPICE subcircuit model designed for LTSpice.
     LTSpice specific models provide extra functionality to manipulate the waveform stimulus of the output
@@ -476,7 +493,10 @@ def create_ltspice_output_model(ibis_data:DataModel, corner:_CORNER, truncation)
 
     return spice_str
 
-def create_ltspice_symbol(ibis_data:DataModel, corner:_CORNER, model_path:str, io_type:_IO_TYPE):
+def create_ltspice_symbol(
+        ibis_data:DataModel, corner:_CORNER, model_path:str, 
+        io_type:_IO_TYPE, stimulus: Optional[_STIMULUS] = None
+        ):
     """
     Creates an LTSpice symbol for the given model_path within the model_path directory
     This helps with the relative referencing of the model_path within the symbol file.
@@ -534,8 +554,8 @@ def ngspice_stimulus_netlist_setup(stimulus: Optional[_STIMULUS]):
     Returns a netlist string that sets up the ngSPICE stimulus sources for the model
     """
     setup_str = ".model SW SW(Ron=1n Roff=1G Vt=.5 Vh=-.4)\n\n"
-    if not stimulus is None:
-        setup_str += f"V10 STIMULUS_EN {stimulus} 0 1"
+    if not stimulus =='ALL':
+        setup_str += f"V10 {stimulus} 0 1\n"
         setup_str += f"S1 Ku K_U_{stimulus} {stimulus} 0 SW\n"
         setup_str += f"S7 Kd K_D_{stimulus} {stimulus} 0 SW\n"
         return setup_str
@@ -641,7 +661,7 @@ def create_ngspice_output_model(
         kf = compress_param(kf)
 
         parameter_info = "* Note: This model may only work in ngSPICE.\n"
-        if stimulus is None:
+        if stimulus =='ALL':
             parameter_info += "* Stimulus Options: \n" \
                                 "*\t1 - Oscillate at given freq and duty\n" \
                                 "*\t2 - Inverted Oscillate at given freq and duty\n" \
@@ -656,8 +676,8 @@ def create_ngspice_output_model(
         spice_str+=header
 
         subcircuit = f'.SUBCKT {ibis_data.model_name}_Output_{corner}'
-        if not stimulus is None:
-            subcircuit += stimulus
+        if not stimulus =='ALL':
+            subcircuit += str(stimulus)
         subcircuit_params = f' OUT stimulus=1 freq=10Meg duty=0.5 delay=0 \n\n'
 
         spice_str+=subcircuit + subcircuit_params
@@ -709,47 +729,56 @@ def create_ngspice_output_model(
         spice_str+=f'.param stimulus_ = stimulus\n\n'
         spice_str+='.endif\n\n'
 
-        if stimulus is None or stimulus == 'OSC':
+        if stimulus =='ALL' or stimulus == 'OSC':
         # Oscillation Strings
             ku_osc_str, kd_osc_str = create_pwl_strings(create_osc_waveform_pwl, kr, kf, open_drain)
             if not open_drain:
                 spice_str+=f"V16 K_U_OSC 0 PWL({ku_osc_str}) r=0 td={{delay}}\n"
             spice_str+=f"V36 K_D_OSC 0 PWL({kd_osc_str}) r=0 td={{delay}}\n"
-            
-        spice_str+=f"V17 K_U_HIGH 0 1\n"
-        spice_str+=f"V18 K_U_LOW 0 0\n"
-        spice_str+=f"V37 K_D_HIGH 0 0\n"
-        spice_str+=f"V38 K_D_LOW 0 1\n"
+        
+        if stimulus =='ALL' or stimulus == 'HIGH':
+            spice_str+=f"V17 K_U_HIGH 0 1\n"
+            spice_str+=f"V18 K_U_LOW 0 0\n"
 
-        if stimulus is None or stimulus == 'OSC_INV':
+        if stimulus =='ALL' or stimulus == 'LOW':
+            spice_str+=f"V37 K_D_HIGH 0 0\n"
+            spice_str+=f"V38 K_D_LOW 0 1\n"
+
+        if stimulus =='ALL' or stimulus == 'OSC_INV':
             ku_inv_osc_str, kd_inv_osc_str = create_pwl_strings(create_osc_waveform_pwl, kf, kr, open_drain)
             if not open_drain:
                 spice_str+=f"V19 K_U_OSC_INV 0 PWL({ku_inv_osc_str}) r=0 td={{delay}}\n"
             spice_str+=f"V39 K_D_OSC_INV 0 PWL({kd_inv_osc_str}) r=0 td={{delay}}\n"
 
-        if stimulus is None or stimulus == 'RISE':
+        if stimulus =='ALL' or stimulus == 'RISE':
             # Rising Edge Strings
-            kur_str, kdr_str = create_pwl_strings(create_edge_waveform_pwl, kr, kf, open_drain)
-            if not open_drain:
+            if open_drain:
+                kdr_str = create_edge_waveform_pwl(kr[:, _TIME], kr[:, _KD_OD])
+            else:
+                kdr_str = create_edge_waveform_pwl(kr[:, _TIME], kr[:, _KD])
+                kur_str = create_edge_waveform_pwl(kr[:, _TIME], kr[:, _KU])
                 spice_str+=f"V20 K_U_RISE 0 PWL({kur_str}) td={{delay}}\n"
             spice_str+=f"V40 K_D_RISE 0 PWL({kdr_str}) td={{delay}}\n"
                 
-        if stimulus is None or stimulus == 'FALL':
+        if stimulus =='ALL' or stimulus == 'FALL':
             # Falling Edge Strings
-            kuf_str, kdf_str = create_pwl_strings(create_edge_waveform_pwl, kf, kr, open_drain)
-            if not open_drain:
+            if open_drain:
+                kdf_str = create_edge_waveform_pwl(kf[:, _TIME], kf[:, _KD_OD])
+            else:
+                kdf_str = create_edge_waveform_pwl(kf[:, _TIME], kf[:, _KD])
+                kuf_str = create_edge_waveform_pwl(kf[:, _TIME], kf[:, _KU])
                 spice_str+=f"V21 K_U_FALL 0 PWL({kuf_str}) td={{delay}}\n"
             spice_str+=f"V41 K_D_FALL 0 PWL({kdf_str}) td={{delay}}\n"
 
         bitstream = [random.randint(0, 1) for _ in range(127)]
         inv_bitstream = [int(not bit) for bit in bitstream]
-        if stimulus is None or stimulus == 'RAND':
+        if stimulus =='ALL' or stimulus == 'RAND':
             # Pseudorandom Strings
             ku_rand_str, kd_rand_str = create_pwl_strings(create_arb_bitstream_pwl, kf, kr, open_drain, bitstream=bitstream)
             if not open_drain:
                 spice_str+=f"V51 K_U_RAND 0 PWL({ku_rand_str}) r=0  td={{delay}}\n"
             spice_str+=f"V53 K_D_RAND 0 PWL({kd_rand_str}) r=0  td={{delay}}\n"
-        if stimulus is None or stimulus == 'RAND_INV':
+        if stimulus =='ALL' or stimulus == 'RAND_INV':
             ku_inv_rand_str, kd_inv_rand_str = create_pwl_strings(create_arb_bitstream_pwl, kf, kr, open_drain, bitstream=inv_bitstream)
             if not open_drain:
                 spice_str+=f"V52 K_U_RAND_INV 0 PWL({ku_inv_rand_str}) r=0  td={{delay}}\n"
@@ -787,7 +816,7 @@ def convert_iv_table_to_str(voltage, current):
     return str_val
 
 
-def create_edge_waveform_pwl(time, k_param):
+def create_edge_waveform_pwl(time, k_param, *args, **kwargs):
     """
     Creates the PWL value string for the edge waveform
 
@@ -804,7 +833,7 @@ def create_edge_waveform_pwl(time, k_param):
     return str_val
 
 
-def create_osc_waveform_pwl(t1, k1, t2, k2, ng=False):
+def create_osc_waveform_pwl(t1, k1, t2, k2, ng=False, *args, **kwargs):
     """
     Creates the PWL value string for the oscillation waveform
 
@@ -861,12 +890,12 @@ def create_pwl_strings(pwl_func: Callable, k1, k2, open_drain: bool = False, ng:
     
     '''
     if open_drain:
-        kd_osc_str = pwl_func(k1[:, _TIME], k1[:, _KD_OD], k2[:, _TIME], k2[:, _KD_OD], ng=ng, **kwargs)
-        return None, kd_osc_str
+        kd_pwl_str = pwl_func(k1[:, _TIME], k1[:, _KD_OD], k2[:, _TIME], k2[:, _KD_OD], ng=ng, **kwargs)
+        return None, kd_pwl_str
     else:
-        ku_osc_str = pwl_func(k1[:, _TIME], k1[:, _KU], k2[:, _TIME], k2[:, _KU], ng=ng, **kwargs)
-        kd_osc_str = pwl_func(k1[:, _TIME], k2[:, _KD], k2[:, _TIME], k2[:, _KD], ng=ng, **kwargs)
-        return ku_osc_str, kd_osc_str
+        ku_pwl_str = pwl_func(k1[:, _TIME], k1[:, _KU], k2[:, _TIME], k2[:, _KU], ng=ng, **kwargs)
+        kd_pwl_str = pwl_func(k1[:, _TIME], k1[:, _KD], k2[:, _TIME], k2[:, _KD], ng=ng, **kwargs)
+        return ku_pwl_str, kd_pwl_str
 
 def create_arb_bitstream_pwl(t1, k1, t2, k2, ng=False, bitstream: List[int] = [random.randint(0, 1) for _ in range(127)]):
     """

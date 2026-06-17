@@ -33,7 +33,11 @@ def create_gui_exe():
     PyInstaller.__main__.run([
         'pybis2spice-gui.py',
         '-iicon.ico',
-        '--onefile'
+        '--onefile',
+        '--collect-all', 
+        'ecdtools',
+        '--collect-all', 
+        'textparser'
     ])
 
     shutil.copy(os.path.join('dist', 'pybis2spice-gui.exe'), os.getcwd())

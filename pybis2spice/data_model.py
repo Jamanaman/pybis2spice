@@ -21,7 +21,7 @@
 import sys
 import numpy as np
 from numpy.typing import NDArray
-from ecdtools import ibis as ecd # type:ignore
+import ecdtools as ecd # type:ignore
 from typing import List, Tuple, Optional
 import warnings
 
@@ -97,6 +97,10 @@ class DataModel(object):
             self.l_pkg = extract_range_param(self.component.package.l_pkg)
             self.c_pkg = extract_range_param(self.component.package.c_pkg)
             self.c_comp = extract_range_param(self.model.c_comp)
+            self.c_comp_pullup = extract_range_param(self.model.c_comp_pullup)
+            self.c_comp_pulldown = extract_range_param(self.model.c_comp_pulldown)
+            self.c_comp_pwr_clamp = extract_range_param(self.model.c_comp_pwr_clamp)
+            self.c_comp_gnd_clamp = extract_range_param(self.model.c_comp_gnd_clamp)
             self.v_range = extract_range_param(self.model.voltage_range)
             self.temp_range = extract_range_param(self.model.temperature_range)
             self.pullup_ref = extract_range_param(self.model.pullup_reference)
