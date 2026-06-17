@@ -714,26 +714,32 @@ def create_ngspice_output_model(
             ku_osc_str, kd_osc_str = create_pwl_strings(create_osc_waveform_pwl, kr, kf, open_drain)
             if not open_drain:
                 spice_str+=f"V16 K_U_OSC 0 PWL({ku_osc_str}) r=0 td={{delay}}\n"
+            spice_str+=f"V36 K_D_OSC 0 PWL({kd_osc_str}) r=0 td={{delay}}\n"
             
         spice_str+=f"V17 K_U_HIGH 0 1\n"
         spice_str+=f"V18 K_U_LOW 0 0\n"
+        spice_str+=f"V37 K_D_HIGH 0 0\n"
+        spice_str+=f"V38 K_D_LOW 0 1\n"
 
         if stimulus is None or stimulus == 'OSC_INV':
             ku_inv_osc_str, kd_inv_osc_str = create_pwl_strings(create_osc_waveform_pwl, kf, kr, open_drain)
             if not open_drain:
                 spice_str+=f"V19 K_U_OSC_INV 0 PWL({ku_inv_osc_str}) r=0 td={{delay}}\n"
+            spice_str+=f"V39 K_D_OSC_INV 0 PWL({kd_inv_osc_str}) r=0 td={{delay}}\n"
 
         if stimulus is None or stimulus == 'RISE':
             # Rising Edge Strings
             kur_str, kdr_str = create_pwl_strings(create_edge_waveform_pwl, kr, kf, open_drain)
             if not open_drain:
                 spice_str+=f"V20 K_U_RISE 0 PWL({kur_str}) td={{delay}}\n"
+            spice_str+=f"V40 K_D_RISE 0 PWL({kdr_str}) td={{delay}}\n"
                 
         if stimulus is None or stimulus == 'FALL':
             # Falling Edge Strings
             kuf_str, kdf_str = create_pwl_strings(create_edge_waveform_pwl, kf, kr, open_drain)
             if not open_drain:
                 spice_str+=f"V21 K_U_FALL 0 PWL({kuf_str}) td={{delay}}\n"
+            spice_str+=f"V41 K_D_FALL 0 PWL({kdf_str}) td={{delay}}\n"
 
         bitstream = [random.randint(0, 1) for _ in range(127)]
         inv_bitstream = [int(not bit) for bit in bitstream]
@@ -742,20 +748,12 @@ def create_ngspice_output_model(
             ku_rand_str, kd_rand_str = create_pwl_strings(create_arb_bitstream_pwl, kf, kr, open_drain, bitstream=bitstream)
             if not open_drain:
                 spice_str+=f"V51 K_U_RAND 0 PWL({ku_rand_str}) r=0  td={{delay}}\n"
+            spice_str+=f"V53 K_D_RAND 0 PWL({kd_rand_str}) r=0  td={{delay}}\n"
         if stimulus is None or stimulus == 'RAND_INV':
             ku_inv_rand_str, kd_inv_rand_str = create_pwl_strings(create_arb_bitstream_pwl, kf, kr, open_drain, bitstream=inv_bitstream)
             if not open_drain:
                 spice_str+=f"V52 K_U_RAND_INV 0 PWL({ku_inv_rand_str}) r=0  td={{delay}}\n"
-
-        # Setup the K-Parameter waveforms for the Pullup transistor (Kd)
-        spice_str+=f"V36 K_D_OSC 0 PWL({kd_osc_str}) r=0 td={{delay}}\n"
-        spice_str+=f"V37 K_D_HIGH 0 0\n"
-        spice_str+=f"V38 K_D_LOW 0 1\n"
-        spice_str+=f"V39 K_D_OSC_INV 0 PWL({kd_inv_osc_str}) r=0 td={{delay}}\n"
-        spice_str+=f"V40 K_D_RISE 0 PWL({kdr_str}) td={{delay}}\n"
-        spice_str+=f"V41 K_D_FALL 0 PWL({kdf_str}) td={{delay}}\n"
-        spice_str+=f"V53 K_D_RAND 0 PWL({kd_rand_str}) r=0  td={{delay}}\n"
-        spice_str+=f"V54 K_D_RAND_INV 0 PWL({kd_inv_rand_str}) r=0  td={{delay}}\n"
+            spice_str+=f"V54 K_D_RAND_INV 0 PWL({kd_inv_rand_str}) r=0  td={{delay}}\n"
 
         if ibis_data.model_type.lower() == "3-state":
             spice_str+=".if(stimulus==9)\n"
@@ -858,8 +856,19 @@ def create_osc_waveform_pwl(t1, k1, t2, k2, ng=False):
     # gap_pos and gap_neg are parameters calculated within SPICE to oscillate at the right frequency and duty
     return str_val
 
+def create_pwl_strings(pwl_func: Callable, k1, k2, open_drain: bool = False, ng: bool = True, **kwargs):
+    '''
+    
+    '''
+    if open_drain:
+        kd_osc_str = pwl_func(k1[:, _TIME], k1[:, _KD_OD], k2[:, _TIME], k2[:, _KD_OD], ng=ng, **kwargs)
+        return None, kd_osc_str
+    else:
+        ku_osc_str = pwl_func(k1[:, _TIME], k1[:, _KU], k2[:, _TIME], k2[:, _KU], ng=ng, **kwargs)
+        kd_osc_str = pwl_func(k1[:, _TIME], k2[:, _KD], k2[:, _TIME], k2[:, _KD], ng=ng, **kwargs)
+        return ku_osc_str, kd_osc_str
 
-def create_arb_bitstream_pwl(t1, k1, t2, k2, bitstream, ng=False):
+def create_arb_bitstream_pwl(t1, k1, t2, k2, ng=False, bitstream: List[int] = [random.randint(0, 1) for _ in range(127)]):
     """
     Creates the PWL value string for an arbitrary bitstream
 
@@ -873,7 +882,6 @@ def create_arb_bitstream_pwl(t1, k1, t2, k2, bitstream, ng=False):
             str_val: the string that goes into the oscillator PWL source
     """
     def _create_ngspice_bitstream_waveform_pwl(t1, k1, t2, k2, bitstream):
-
 
         str_val = ''
 
