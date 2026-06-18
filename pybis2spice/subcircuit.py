@@ -22,7 +22,7 @@ from typing import Literal, Optional, Callable, List
 _CORNER = Literal['Typical', 'WeakSlow', 'FastStrong']
 _IO_TYPE = Literal['Input', 'Output']
 _SIMULATOR = Literal['Generic', 'ngSPICE', 'LTSpice']
-_STIMULUS = Literal['ALL', 'OSC', 'OSC_INV', 'HIGH', 'LOW', 'RISE', 'FALL', 'RAND', 'RAND_INV', 'HIGHZ']
+_STIMULUS = Literal['ALL', 'OSC', 'OSC_INV', 'HIGH', 'LOW', 'RISE', 'FALL', 'RAND', 'RAND_INV', 'HIGHZ', 'TRIG']
 
 # IBIS Data File Column Indexes for Waveform Tables
 _TIME = 0
@@ -554,76 +554,82 @@ def ngspice_stimulus_netlist_setup(stimulus: Optional[_STIMULUS]):
     Returns a netlist string that sets up the ngSPICE stimulus sources for the model
     """
     setup_str = ".model SW SW(Ron=1n Roff=1G Vt=.5 Vh=-.4)\n\n"
-    if not stimulus =='ALL':
+    if not stimulus =='ALL' and not stimulus == 'TRIG':
         setup_str += f"V10 {stimulus} 0 1\n"
         setup_str += f"S1 Ku K_U_{stimulus} {stimulus} 0 SW\n"
         setup_str += f"S7 Kd K_D_{stimulus} {stimulus} 0 SW\n"
         return setup_str
-    
-    # Setup the Stimulus setting options for the Pullup Waveform (Ku)
-    setup_str = ".model SW SW(Ron=1n Roff=1G Vt=.5 Vh=-.4)\n\n"
-    setup_str += "\n* Setup the Stimulus setting options for the Pullup Waveform (Ku)\n"
-    setup_str += ".if (stimulus_==1)\n"
-    setup_str += "V10 OSC 0 1\n"
-    setup_str += ".else\n"
-    setup_str += "V10 OSC 0 0\n"
-    setup_str += ".endif\n"
-    setup_str += ".if (stimulus_==2)\n"
-    setup_str += "V11 OSC_INV 0 1\n"
-    setup_str += ".else\n"
-    setup_str += "V11 OSC_INV 0 0\n"
-    setup_str += ".endif\n"
-    setup_str += ".if (stimulus_==3)\n"
-    setup_str += "V12 RISE 0 1\n"
-    setup_str += ".else\n"
-    setup_str += "V12 RISE 0 0\n"
-    setup_str += ".endif\n"
-    setup_str += ".if (stimulus_==4)\n"
-    setup_str += "V13 FALL 0 1\n"
-    setup_str += ".else\n"
-    setup_str += "V13 FALL 0 0\n"
-    setup_str += ".endif\n"
-    setup_str += ".if (stimulus_==5)\n"
-    setup_str += "V14 HIGH 0 1\n"
-    setup_str += ".else\n"
-    setup_str += "V14 HIGH 0 0\n"
-    setup_str += ".endif\n"
-    setup_str += ".if (stimulus_==6)\n"
-    setup_str += "V15 LOW 0 1\n"
-    setup_str += ".else\n"
-    setup_str += "V15 LOW 0 0\n"
-    setup_str += ".endif\n"
-    setup_str += ".if (stimulus_==7)\n"
-    setup_str += "V61 RAND 0 1\n"
-    setup_str += ".else\n"
-    setup_str += "V61 RAND 0 0\n"
-    setup_str += ".endif\n"
-    setup_str += ".if (stimulus_==8)\n"
-    setup_str += "V62 RAND_INV 0 1\n"
-    setup_str += ".else\n"
-    setup_str += "V62 RAND_INV 0 0\n"
-    setup_str += ".endif\n"
+    elif stimulus == 'TRIG':  
+        setup_str += '.model SW_INV SW(Ron=1G Roff=1n Vt=.5 Vh=-.4)\n\n'
+        setup_str += 'S1 Ku K_U_RISE TRIG 0 SW\n'
+        setup_str += 'S2 Ku K_U_FALL TRIG 0 SW_INV\n'
+        setup_str += 'S3 Kd K_D_RISE TRIG 0 SW\n'
+        setup_str += 'S4 Kd K_D_FALL TRIG 0 SW_INV\n'
+        return setup_str
+    else:
+        # Setup the Stimulus setting options for the Pullup Waveform (Ku)
+        setup_str = ".model SW SW(Ron=1n Roff=1G Vt=.5 Vh=-.4)\n\n"
+        setup_str += "\n* Setup the Stimulus setting options for the Pullup Waveform (Ku)\n"
+        setup_str += ".if (stimulus_==1)\n"
+        setup_str += "V10 OSC 0 1\n"
+        setup_str += ".else\n"
+        setup_str += "V10 OSC 0 0\n"
+        setup_str += ".endif\n"
+        setup_str += ".if (stimulus_==2)\n"
+        setup_str += "V11 OSC_INV 0 1\n"
+        setup_str += ".else\n"
+        setup_str += "V11 OSC_INV 0 0\n"
+        setup_str += ".endif\n"
+        setup_str += ".if (stimulus_==3)\n"
+        setup_str += "V12 RISE 0 1\n"
+        setup_str += ".else\n"
+        setup_str += "V12 RISE 0 0\n"
+        setup_str += ".endif\n"
+        setup_str += ".if (stimulus_==4)\n"
+        setup_str += "V13 FALL 0 1\n"
+        setup_str += ".else\n"
+        setup_str += "V13 FALL 0 0\n"
+        setup_str += ".endif\n"
+        setup_str += ".if (stimulus_==5)\n"
+        setup_str += "V14 HIGH 0 1\n"
+        setup_str += ".else\n"
+        setup_str += "V14 HIGH 0 0\n"
+        setup_str += ".endif\n"
+        setup_str += ".if (stimulus_==6)\n"
+        setup_str += "V15 LOW 0 1\n"
+        setup_str += ".else\n"
+        setup_str += "V15 LOW 0 0\n"
+        setup_str += ".endif\n"
+        setup_str += ".if (stimulus_==7)\n"
+        setup_str += "V61 RAND 0 1\n"
+        setup_str += ".else\n"
+        setup_str += "V61 RAND 0 0\n"
+        setup_str += ".endif\n"
+        setup_str += ".if (stimulus_==8)\n"
+        setup_str += "V62 RAND_INV 0 1\n"
+        setup_str += ".else\n"
+        setup_str += "V62 RAND_INV 0 0\n"
+        setup_str += ".endif\n"
 
-    setup_str += "S1 Ku K_U_OSC OSC 0 SW\n"
-    setup_str += "S2 Ku K_U_OSC_INV OSC_INV 0 SW\n"
-    setup_str += "S3 Ku K_U_RISE RISE 0 SW\n"
-    setup_str += "S4 Ku K_U_FALL FALL 0 SW\n"
-    setup_str += "S5 Ku K_U_HIGH HIGH 0 SW\n"
-    setup_str += "S6 Ku K_U_LOW LOW 0 SW\n"
-    setup_str += "S20 Ku K_U_RAND RAND 0 SW\n"
-    setup_str += "S21 Ku K_U_RAND_INV RAND_INV 0 SW\n"
+        setup_str += "S1 Ku K_U_OSC OSC 0 SW\n"
+        setup_str += "S2 Ku K_U_OSC_INV OSC_INV 0 SW\n"
+        setup_str += "S3 Ku K_U_RISE RISE 0 SW\n"
+        setup_str += "S4 Ku K_U_FALL FALL 0 SW\n"
+        setup_str += "S5 Ku K_U_HIGH HIGH 0 SW\n"
+        setup_str += "S6 Ku K_U_LOW LOW 0 SW\n"
+        setup_str += "S20 Ku K_U_RAND RAND 0 SW\n"
+        setup_str += "S21 Ku K_U_RAND_INV RAND_INV 0 SW\n"
 
-    # Setup the Stimulus setting options for the Pulldown Waveform (Kd)
-    setup_str += "\n* Setup the Stimulus setting options for the Pulldown Waveform (Kd)\n"
-    setup_str += "S7 Kd K_D_OSC OSC 0 SW\n"
-    setup_str += "S8 Kd K_D_OSC_INV OSC_INV 0 SW\n"
-    setup_str += "S9 Kd K_D_RISE RISE 0 SW\n"
-    setup_str += "S10 Kd K_D_FALL FALL 0 SW\n"
-    setup_str += "S11 Kd K_D_HIGH HIGH 0 SW\n"
-    setup_str += "S12 Kd K_D_LOW LOW 0 SW\n"
-    setup_str += "S22 Kd K_D_RAND RAND 0 SW\n"
-    setup_str += "S23 Kd K_D_RAND_INV RAND_INV 0 SW\n"
-
+        # Setup the Stimulus setting options for the Pulldown Waveform (Kd)
+        setup_str += "\n* Setup the Stimulus setting options for the Pulldown Waveform (Kd)\n"
+        setup_str += "S7 Kd K_D_OSC OSC 0 SW\n"
+        setup_str += "S8 Kd K_D_OSC_INV OSC_INV 0 SW\n"
+        setup_str += "S9 Kd K_D_RISE RISE 0 SW\n"
+        setup_str += "S10 Kd K_D_FALL FALL 0 SW\n"
+        setup_str += "S11 Kd K_D_HIGH HIGH 0 SW\n"
+        setup_str += "S12 Kd K_D_LOW LOW 0 SW\n"
+        setup_str += "S22 Kd K_D_RAND RAND 0 SW\n"
+        setup_str += "S23 Kd K_D_RAND_INV RAND_INV 0 SW\n"
     return setup_str
 
 def create_ngspice_output_model(
@@ -678,9 +684,12 @@ def create_ngspice_output_model(
         subcircuit = f'.SUBCKT {ibis_data.model_name}_Output_{corner}'
         if not stimulus =='ALL':
             subcircuit += str(stimulus)
-        subcircuit_params = f' OUT stimulus=1 freq=10Meg duty=0.5 delay=0 \n\n'
+        subcircuit_ports = ' OUT'
+        if stimulus == 'TRIG':
+            subcircuit_ports += ' TRIG'
+        subcircuit_params = f' stimulus=1 freq=10Meg duty=0.5 delay=0 \n\n'
 
-        spice_str+=subcircuit + subcircuit_params
+        spice_str+=subcircuit + subcircuit_ports + subcircuit_params
 
         rlc_netlist = spice_rlc_netlist(ibis_data, corner, pin_name="OUT")
         spice_str+=rlc_netlist
@@ -750,7 +759,7 @@ def create_ngspice_output_model(
                 spice_str+=f"V19 K_U_OSC_INV 0 PWL({ku_inv_osc_str}) r=0 td={{delay}}\n"
             spice_str+=f"V39 K_D_OSC_INV 0 PWL({kd_inv_osc_str}) r=0 td={{delay}}\n"
 
-        if stimulus =='ALL' or stimulus == 'RISE':
+        if stimulus =='ALL' or stimulus == 'RISE' or stimulus == 'TRIG':
             # Rising Edge Strings
             if open_drain:
                 kdr_str = create_edge_waveform_pwl(kr[:, _TIME], kr[:, _KD_OD])
@@ -760,7 +769,7 @@ def create_ngspice_output_model(
                 spice_str+=f"V20 K_U_RISE 0 PWL({kur_str}) td={{delay}}\n"
             spice_str+=f"V40 K_D_RISE 0 PWL({kdr_str}) td={{delay}}\n"
                 
-        if stimulus =='ALL' or stimulus == 'FALL':
+        if stimulus =='ALL' or stimulus == 'FALL' or stimulus == 'TRIG':
             # Falling Edge Strings
             if open_drain:
                 kdf_str = create_edge_waveform_pwl(kf[:, _TIME], kf[:, _KD_OD])
@@ -816,7 +825,7 @@ def convert_iv_table_to_str(voltage, current):
     return str_val
 
 
-def create_edge_waveform_pwl(time, k_param, *args, **kwargs):
+def create_edge_waveform_pwl(time, k_param):
     """
     Creates the PWL value string for the edge waveform
 

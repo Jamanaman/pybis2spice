@@ -24,7 +24,7 @@ import urllib.request
 import re
 import os
 import platform
-from typing import List
+from typing import List, get_args
 
 logging.basicConfig(level=logging.INFO)
 ibis_file = None  # The ecdtools ibis_model object
@@ -855,10 +855,7 @@ if __name__ == '__main__':
     stimulus_var = tk.StringVar()
     stimulus_combo = ttk.Combobox(
         master=frame3, 
-        values=[
-            'ALL', 'OSC', 'OSC_INV', 'HIGH', 'LOW', 'RISE', 
-            'FALL', 'RAND', 'RAND_INV', 'HIGHZ' # TODO: Add external trigger 
-        ],
+        values=get_args(sckt._STIMULUS),
         textvariable=stimulus_var,
         state='disabled'
     )
