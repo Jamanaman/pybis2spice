@@ -4,7 +4,7 @@ from typing import Optional
 
 def generate_spice_model_file(
         io_type: sckt._IO_TYPE, subcircuit_type:sckt._SIMULATOR, ibis_data: DataModel, 
-        corner: sckt._CORNER, output_filepath: str, truncation: int, stimulus: Optional[sckt._STIMULUS] = None
+        corner: sckt._CORNER, output_filepath: str, truncation: float, stimulus: Optional[sckt._STIMULUS] = None
         ):
     """
     Wrapper around the subcircuit file creation functions. Calls the relevant function i.e. LTSpice or Generic

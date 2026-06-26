@@ -464,7 +464,7 @@ def generate_current_data(
     return (i_pu, i_pd, i_pc, i_gc, i_rfix, i_c_comp), trunc_idx
 
 
-def solve_k_params_output(ibis_data, corner=1, waveform_type="Rising", truncation=0) -> NDArray[np.float64]:
+def solve_k_params_output(ibis_data:DataModel, corner:int=1, waveform_type:str="Rising", truncation:float=0) -> NDArray[np.float64]:
     """
     Solves the k-parameters for the ibis model for any 2 or 3-state output buffer
 
@@ -518,7 +518,7 @@ def solve_k_params_output(ibis_data, corner=1, waveform_type="Rising", truncatio
     return k_param
 
 
-def solve_k_params_output_open_drain(ibis_data, corner=1, waveform_type="Rising", truncation=0) -> NDArray[np.float64]:
+def solve_k_params_output_open_drain(ibis_data:DataModel, corner:int=1, waveform_type:str="Rising", truncation:float=0) -> NDArray[np.float64]:
     """
     Solves the k-parameters for the ibis model for any 2 or 3-state output buffer
 
@@ -542,10 +542,12 @@ def solve_k_params_output_open_drain(ibis_data, corner=1, waveform_type="Rising"
     time = np.unique(waveform1.data[:, 0])
     array_size = np.shape(time)[0]
 
-    # Getting the device and clamp current waveforms based on the new time series
-    (i_pu1, i_pd1, i_pc1, i_gc1, i_rfix1, i_c_comp1), trunc_idx = generate_current_data(ibis_data, time, corner, waveform1, truncation)
+    # Getting the device and clamp current waveforms based on the new time series: pullup current not relevant for open drain
+    (_, i_pd1, i_pc1, i_gc1, i_rfix1, i_c_comp1), trunc_idx = generate_current_data(ibis_data, time, corner, waveform1, truncation)
 
-    # creating a k-parameters array with columns [time, k_d]
+    # creating a k-parameters array with columns [time, k_d] after truncating
+    time = time[0:-trunc_idx]
+    array_size = np.shape(time)[0]
     k_param = np.zeros([array_size, 2])
     k_param[:, 0] = time
 

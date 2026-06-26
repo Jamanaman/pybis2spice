@@ -59,6 +59,8 @@ def spice_header_info(ibis_data:DataModel, corner:_CORNER, extra_info=""):
         ibis_data - a DataModel object (defined in pybis2spice.py)
         corner - "Typical", "WeakSlow" or "FastStrong"
     """
+
+    _INDEX = convert_corner_str_to_index(corner)
     st = "*********************************************************************\n*\n"
     st += f'* IBIS filename: {ibis_data.file_name}\n'
     st += f'* Component: {ibis_data.component_name}\n'
@@ -66,6 +68,7 @@ def spice_header_info(ibis_data:DataModel, corner:_CORNER, extra_info=""):
     st += f'* Model Type: {ibis_data.model_type}\n'
     st += f'* Corner: {corner}\n'
     st += f'* Voltage Range (V): {ibis_data.v_range} (Typ, Min, Max)\n'
+    st += f'* Voltage Level for Corner (V): {ibis_data.v_range[_INDEX]} \n'
     st += f'* Temperature Range (degC): {ibis_data.temp_range} (Typ, Min, Max)\n'
     st += f'* SPICE subcircuit model created with pybis2spice version {get_version()}\n'
     st += f'* For more info, visit https://github.com/kamratia1/pybis2spice/\n*\n'
@@ -257,7 +260,10 @@ def create_input_model(ibis_data:DataModel, corner:_CORNER, io_type:_IO_TYPE, ng
         raise e
     return spice_str
 
-def create_generic_output_model(ibis_data:DataModel, corner:_CORNER, truncation, stimulus: Optional[_STIMULUS] = None) -> str:
+def create_generic_output_model(
+        ibis_data:DataModel, corner:_CORNER, 
+        truncation:float, stimulus: Optional[_STIMULUS] = None
+        ) -> str:
     """
     Creates a SPICE generic subcircuit model.
     Generic models are simple and only supports a single oscillation pulse with a given frequency
@@ -363,7 +369,10 @@ def ltspice_stimulus_netlist_setup():
     return setup_str
 
 
-def create_ltspice_output_model(ibis_data:DataModel, corner:_CORNER, truncation, stimulus: Optional[_STIMULUS] = None):
+def create_ltspice_output_model(
+        ibis_data:DataModel, corner:_CORNER, 
+        truncation:float, stimulus: Optional[_STIMULUS] = None
+        ):
     """
     Creates a SPICE subcircuit model designed for LTSpice.
     LTSpice specific models provide extra functionality to manipulate the waveform stimulus of the output
@@ -634,8 +643,8 @@ def ngspice_stimulus_netlist_setup(stimulus: Optional[_STIMULUS]):
 
 def create_ngspice_output_model(
         ibis_data:DataModel, corner:_CORNER,
-        truncation:int, stimulus: Optional[_STIMULUS] = None
-        ):
+        truncation:float, stimulus: Optional[_STIMULUS] = None
+        ) -> str:
     """
     Creates a SPICE subcircuit model designed for ngSPICE.
     ngSPICE specific models provide extra functionality to manipulate the waveform stimulus of the output
@@ -645,6 +654,7 @@ def create_ngspice_output_model(
         corner - "Typical", "WeakSlow" or "FastStrong"
         io_type - "Input" or "Output"
         truncation - percentage in integer form for truncation tolerance
+        stimulus - stimulus type 
 
     Returns the created spice string
     """
@@ -681,28 +691,31 @@ def create_ngspice_output_model(
         header = spice_header_info(ibis_data, corner, extra_info=parameter_info)
         spice_str+=header
 
-        subcircuit = f'.SUBCKT {ibis_data.model_name}_Output_{corner}'
+        subcircuit_line = f'.SUBCKT {ibis_data.model_name}_Output_{corner}'
         if not stimulus =='ALL':
-            subcircuit += str(stimulus)
-        subcircuit_ports = ' OUT'
+            subcircuit_line += str(stimulus)
+        subcircuit_line += ' OUT'
         if stimulus == 'TRIG':
-            subcircuit_ports += ' TRIG'
-        subcircuit_params = f' stimulus=1 freq=10Meg duty=0.5 delay=0 \n\n'
+            subcircuit_line += ' TRIG'
+        if stimulus == 'ALL':
+            subcircuit_line += f' stimulus=1 freq=10Meg duty=0.5 delay=0 \n\n'
+        if stimulus in ['OSC', 'OSC_INV', 'RAND', 'RAND_INV']:
+            subcircuit_line += f' freq=10Meg duty=0.5 delay=0 \n\n'
 
-        spice_str+=subcircuit + subcircuit_ports + subcircuit_params
+        spice_str += subcircuit_line
 
         rlc_netlist = spice_rlc_netlist(ibis_data, corner, pin_name="OUT")
-        spice_str+=rlc_netlist
+        spice_str += rlc_netlist
 
         clamps_netlist = define_pwr_and_gnd_clamps(ibis_data, corner, ng=True)
-        spice_str+=clamps_netlist
+        spice_str += clamps_netlist
 
         device_netlist = define_pullup_and_pulldown_devices(ibis_data, corner, ng=True)
-        spice_str+=device_netlist
+        spice_str += device_netlist
 
         stimulus_netlist = ngspice_stimulus_netlist_setup(stimulus=stimulus) # Look at this in more detail
  
-        spice_str+=stimulus_netlist
+        spice_str += stimulus_netlist
 
         (offset_neg_r, offset_pos_r) = determine_crossover_offsets(kr)
         (offset_neg_f, offset_pos_f) = determine_crossover_offsets(kf)
