@@ -1,10 +1,11 @@
 from . import subcircuit as sckt
 from .data_model import DataModel
 from typing import Optional
+from pathlib import Path
 
 def generate_spice_model_file(
         io_type: sckt._IO_TYPE, subcircuit_type:sckt._SIMULATOR, ibis_data: DataModel, 
-        corner: sckt._CORNER, output_filepath: str, truncation: float, stimulus: Optional[sckt._STIMULUS] = None
+        corner: sckt._CORNER, truncation: float, output_filepath: str | Path, stimulus: Optional[sckt._STIMULUS] = None 
         ):
     """
     Wrapper around the subcircuit file creation functions. Calls the relevant function i.e. LTSpice or Generic
@@ -18,7 +19,7 @@ def generate_spice_model_file(
             truncation - the percentage of the total range to use to truncate trailing samples in rising and falling waveforms
 
         Returns:
-            The path of the created file
+            The spice string
     """
     try:
         spice_str = ''
@@ -37,7 +38,7 @@ def generate_spice_model_file(
 
         with open(output_filepath, 'w+') as file:
             file.write(spice_str)
-            return output_filepath
+            return spice_str
     except Exception as e:
         raise e
 

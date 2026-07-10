@@ -162,7 +162,7 @@ def define_pwr_and_gnd_clamps(ibis_data:DataModel, corner:_CORNER, ng=False):
     if ibis_data.iv_pwr_clamp is not None:
         return_val += f'V1 PWR_CLAMP_REF 0 {pwr_clamp_ref}\n'
         if not ibis_data.c_comp_pwr_clamp is None:
-            return_val += f'C11 DIE PWR_CLAMP_REF {ibis_data.c_comp_pwr_clamp[_INDEX]}'
+            return_val += f'C11 DIE PWR_CLAMP_REF {ibis_data.c_comp_pwr_clamp[_INDEX]}\n'
         pwr_clamp_table_str = convert_iv_table_to_str(np.flip(pwr_clamp_ref - ibis_data.iv_pwr_clamp[:, 0]),
                                                       np.flip(ibis_data.iv_pwr_clamp[:, _CORNER_INDEX]))
         if ng:
@@ -174,7 +174,7 @@ def define_pwr_and_gnd_clamps(ibis_data:DataModel, corner:_CORNER, ng=False):
     if ibis_data.iv_gnd_clamp is not None:
         return_val += f'V2 GND_CLAMP_REF 0 {gnd_clamp_ref}\n'
         if not ibis_data.c_comp_gnd_clamp is None:
-            return_val += f'C12 DIE GND_CLAMP_REF {ibis_data.c_comp_gnd_clamp[_INDEX]}'
+            return_val += f'C12 DIE GND_CLAMP_REF {ibis_data.c_comp_gnd_clamp[_INDEX]}\n'
         gnd_clamp_table_str = convert_iv_table_to_str(ibis_data.iv_gnd_clamp[:, 0] - gnd_clamp_ref,
                                                       ibis_data.iv_gnd_clamp[:, _CORNER_INDEX])
         if ng:
@@ -693,10 +693,10 @@ def create_ngspice_output_model(
 
         subcircuit_line = f'.SUBCKT {ibis_data.model_name}_Output_{corner}'
         if not stimulus =='ALL':
-            subcircuit_line += str(stimulus)
+            subcircuit_line += '_'+str(stimulus)+' '
         subcircuit_line += ' OUT'
         if stimulus == 'TRIG':
-            subcircuit_line += ' TRIG'
+            subcircuit_line += ' TRIG\n'
         if stimulus == 'ALL':
             subcircuit_line += f' stimulus=1 freq=10Meg duty=0.5 delay=0 \n\n'
         if stimulus in ['OSC', 'OSC_INV', 'RAND', 'RAND_INV']:
@@ -721,35 +721,38 @@ def create_ngspice_output_model(
         (offset_neg_f, offset_pos_f) = determine_crossover_offsets(kf)
 
         # Calculations for defining the frequency and duty cycle of the oscillation stimuli'
-        spice_str+=f'\n* Define Oscillation Sources\n'
-        spice_str+=f'.param calc_gap_pos = {{(duty/freq) - {offset_pos_r} - {offset_neg_f}}}\n'
-        spice_str+=f'.param calc_gap_neg = {{((1-duty)/freq) - {offset_pos_f} - {offset_neg_r}}}\n\n'
-        spice_str+=f'.if (calc_gap_pos<=0)\n'
-        spice_str+=f'.param GAP_POS = 0.1e-12\n'
-        spice_str+='.else\n'
-        spice_str+='.param GAP_POS = calc_gap_pos\n'
-        spice_str+='.endif\n\n'
-        spice_str+=f'.if (calc_gap_neg<=0)\n'
-        spice_str+=f'.param GAP_NEG = 0.1e-12\n'
-        spice_str+='.else\n'
-        spice_str+='.param GAP_NEG = calc_gap_neg\n'
-        spice_str+='.endif\n\n'
+        if stimulus in ['OSC', 'OSC_INV', 'RAND', 'RAND_INV', 'ALL']:
+            spice_str+=f'\n* Define Oscillation Sources\n'
+            spice_str+=f'.param calc_gap_pos = {{(duty/freq) - {offset_pos_r} - {offset_neg_f}}}\n'
+            spice_str+=f'.param calc_gap_neg = {{((1-duty)/freq) - {offset_pos_f} - {offset_neg_r}}}\n\n'
+            spice_str+=f'.if (calc_gap_pos<=0)\n'
+            spice_str+=f'.param GAP_POS = 0.1e-12\n'
+            spice_str+='.else\n'
+            spice_str+='.param GAP_POS = calc_gap_pos\n'
+            spice_str+='.endif\n\n'
+            spice_str+=f'.if (calc_gap_neg<=0)\n'
+            spice_str+=f'.param GAP_NEG = 0.1e-12\n'
+            spice_str+='.else\n'
+            spice_str+='.param GAP_NEG = calc_gap_neg\n'
+            spice_str+='.endif\n\n'
 
-        spice_str+=f'\n* Define Period Duration for Bitstream\n'
-        spice_str+=f'.param t_period = {{(1/freq)}}\n'
+        if stimulus in ['RAND', 'RAND_INV', 'ALL']:
+            spice_str+=f'\n* Define Period Duration for Bitstream\n'
+            spice_str+=f'.param t_period = {{(1/freq)}}\n'
 
         max_stimulus = 8
         if ibis_data.model_type.lower() == "3-state":
             max_stimulus = 9
 
-        # Limit the stimulus between 1 and 8
-        spice_str+=f'.if (stimulus < 1)\n'
-        spice_str+=f'.param stimulus_ =  1\n'
-        spice_str+=f'.elseif (stimulus > {max_stimulus})\n'
-        spice_str+=f'.param stimulus_ =  {max_stimulus}\n'
-        spice_str+='.else\n'
-        spice_str+=f'.param stimulus_ = stimulus\n\n'
-        spice_str+='.endif\n\n'
+        if stimulus == 'ALL':
+            # Limit the stimulus between 1 and 8
+            spice_str+=f'.if (stimulus < 1)\n'
+            spice_str+=f'.param stimulus_ =  1\n'
+            spice_str+=f'.elseif (stimulus > {max_stimulus})\n'
+            spice_str+=f'.param stimulus_ =  {max_stimulus}\n'
+            spice_str+='.else\n'
+            spice_str+=f'.param stimulus_ = stimulus\n\n'
+            spice_str+='.endif\n\n'
 
         if stimulus =='ALL' or stimulus == 'OSC':
         # Oscillation Strings
