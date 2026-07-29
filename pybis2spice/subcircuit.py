@@ -124,7 +124,7 @@ def spice_rlc_netlist(ibis_data:DataModel, corner:_CORNER, pin_name:str):
     if any(
         [not c is None for c in 
             [ibis_data.c_comp_pullup, ibis_data.c_comp_pulldown, 
-            ibis_data.c_comp_pwr_clamp, ibis_data.c_comp_gnd_clamp
+            ibis_data.c_comp_power_clamp, ibis_data.c_comp_gnd_clamp
             ]
         ]):
         st += '.param C_comp = 0\n'
@@ -161,8 +161,8 @@ def define_pwr_and_gnd_clamps(ibis_data:DataModel, corner:_CORNER, ng=False):
     # Arbitrary Source definition for power and ground clamp
     if ibis_data.iv_pwr_clamp is not None:
         return_val += f'V1 PWR_CLAMP_REF 0 {pwr_clamp_ref}\n'
-        if not ibis_data.c_comp_pwr_clamp is None:
-            return_val += f'C11 DIE PWR_CLAMP_REF {ibis_data.c_comp_pwr_clamp[_INDEX]}\n'
+        if not ibis_data.c_comp_power_clamp is None:
+            return_val += f'C11 DIE PWR_CLAMP_REF {ibis_data.c_comp_power_clamp[_INDEX]}\n'
         pwr_clamp_table_str = convert_iv_table_to_str(np.flip(pwr_clamp_ref - ibis_data.iv_pwr_clamp[:, 0]),
                                                       np.flip(ibis_data.iv_pwr_clamp[:, _CORNER_INDEX]))
         if ng:
