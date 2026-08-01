@@ -76,6 +76,22 @@ def spice_header_info(ibis_data:DataModel, corner:_CORNER, extra_info=""):
     st += "*********************************************************************\n\n"
     return st
 
+def spice_subckt_line(ibis_data:DataModel, corner:_CORNER, stimulus:Optional[_STIMULUS], simulator:_SIMULATOR)->str:
+    subcircuit_line = f'.SUBCKT {ibis_data.model_name}_Output_{corner}'
+    if not stimulus =='ALL':
+        subcircuit_line += '_'+str(stimulus)+' '
+    subcircuit_line += ' OUT'
+    if stimulus == 'TRIG':
+        subcircuit_line += ' TRIG\n'
+    if stimulus == 'ALL':
+        if simulator == 'LTSpice':
+            subcircuit_line+= ' params: '
+        subcircuit_line += f' stimulus=1 freq=10Meg duty=0.5 delay=0 \n\n'
+    if stimulus in ['OSC', 'OSC_INV', 'RAND', 'RAND_INV']:
+        if simulator == 'LTSpice':
+            subcircuit_line+= ' params: '
+        subcircuit_line += f' freq=10Meg duty=0.5 delay=0 \n\n'
+    return subcircuit_line
 
 def spice_rlc_netlist(ibis_data:DataModel, corner:_CORNER, pin_name:str):
     """
@@ -423,13 +439,9 @@ def create_ltspice_output_model(
                             "*\t5 - Stuck High\n" \
                             "*\t6 - Stuck Low\n" \
                             "*\t7 - HighZ (if 3-State output)\n\n"
-        header = spice_header_info(ibis_data, corner, extra_info=parameter_info)
-        spice_str+=header
+        spice_str += spice_header_info(ibis_data, corner, extra_info=parameter_info)
 
-        subcircuit = f'.SUBCKT {ibis_data.model_name}-Output-{corner} '
-        subcircuit_params = f'OUT params: stimulus=1 freq=10Meg duty=0.5 delay=0 \n\n'
-
-        spice_str+=subcircuit + subcircuit_params
+        spice_str += spice_subckt_line(ibis_data, corner, stimulus, 'LTSpice')
 
         rlc_netlist = spice_rlc_netlist(ibis_data, corner, pin_name="OUT")
         spice_str+=rlc_netlist
@@ -703,21 +715,9 @@ def create_ngspice_output_model(
                                 "*\t7 - Pseudorandom Bitstream\n" \
                                 "*\t8 - Inverted Pseudorandom Bitstream\n" \
                                 "*\t9 - HighZ (if 3-State output)\n\n"
-        header = spice_header_info(ibis_data, corner, extra_info=parameter_info)
-        spice_str+=header
+        spice_str+=spice_header_info(ibis_data, corner, extra_info=parameter_info)
 
-        subcircuit_line = f'.SUBCKT {ibis_data.model_name}_Output_{corner}'
-        if not stimulus =='ALL':
-            subcircuit_line += '_'+str(stimulus)+' '
-        subcircuit_line += ' OUT'
-        if stimulus == 'TRIG':
-            subcircuit_line += ' TRIG\n'
-        if stimulus == 'ALL':
-            subcircuit_line += f' stimulus=1 freq=10Meg duty=0.5 delay=0 \n\n'
-        if stimulus in ['OSC', 'OSC_INV', 'RAND', 'RAND_INV']:
-            subcircuit_line += f' freq=10Meg duty=0.5 delay=0 \n\n'
-
-        spice_str += subcircuit_line
+        spice_str += spice_subckt_line(ibis_data, corner, stimulus, 'ngSPICE')
 
         rlc_netlist = spice_rlc_netlist(ibis_data, corner, pin_name="OUT")
         spice_str += rlc_netlist
