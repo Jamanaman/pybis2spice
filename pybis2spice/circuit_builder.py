@@ -34,7 +34,7 @@ def generate_spice_model_file(
                 spice_str = sckt.create_ngspice_output_model(ibis_data, corner, truncation, stimulus)
 
         if io_type == "Input":
-            spice_str = sckt.create_input_model(ibis_data, corner, io_type, ng=subcircuit_type=="ngSPICE")
+            spice_str = sckt.create_input_model(ibis_data, corner, ng=subcircuit_type=="ngSPICE")
 
         with open(output_filepath, 'w+') as file:
             file.write(spice_str)

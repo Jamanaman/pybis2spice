@@ -231,7 +231,7 @@ def define_pullup_and_pulldown_devices(ibis_data:DataModel, corner:_CORNER, ng=F
     return return_val
 
 
-def create_input_model(ibis_data:DataModel, corner:_CORNER, io_type:_IO_TYPE, ng=False) -> str:
+def create_input_model(ibis_data:DataModel, corner:_CORNER, ng=False) -> str:
     """
     Creates a SPICE generic subcircuit model.
     Generic models are simple and only supports a single oscillation pulse with a given frequency
@@ -244,10 +244,9 @@ def create_input_model(ibis_data:DataModel, corner:_CORNER, io_type:_IO_TYPE, ng
     """
     try:
         spice_str = ''
-        header = spice_header_info(ibis_data, corner)
-        spice_str+=header
+        spice_str+=spice_header_info(ibis_data, corner)
 
-        spice_str+=f'.SUBCKT {ibis_data.model_name}_{io_type}_{corner} IN\n\n'
+        spice_str+=f'.SUBCKT {ibis_data.model_name}_Input_{corner} IN\n\n'
 
         rlc_netlist = spice_rlc_netlist(ibis_data, corner, pin_name="IN")
         spice_str+=rlc_netlist
