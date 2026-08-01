@@ -336,35 +336,48 @@ def create_generic_output_model(
     return spice_str
 
 
-def ltspice_stimulus_netlist_setup():
+def ltspice_stimulus_netlist_setup(stimulus:Optional[_STIMULUS]):
     """
     Returns a netlist string that sets up the LTSpice stimulus sources for the model
     """
-    # Setup the Stimulus setting options for the Pullup Waveform (Ku)
     setup_str = ".model SW SW(Ron=1n Roff=1G Vt=.5 Vh=-.4)\n\n"
-    setup_str += "\n* Setup the Stimulus setting options for the Pullup Waveform (Ku)\n"
-    setup_str += "V10 OSC 0 {if(stimulus_==1, 1, 0)}\n"
-    setup_str += "V11 OSC_INV 0 {if(stimulus_==2, 1, 0)}\n"
-    setup_str += "V12 RISE 0 {if(stimulus_==3, 1, 0)}\n"
-    setup_str += "V13 FALL 0 {if(stimulus_==4, 1, 0)}\n"
-    setup_str += "V14 HIGH 0 {if(stimulus_==5, 1, 0)}\n"
-    setup_str += "V15 LOW 0 {if(stimulus_==6, 1, 0)}\n"
-    setup_str += "S1 Ku K_U_OSC OSC 0 SW\n"
-    setup_str += "S2 Ku K_U_OSC_INV OSC_INV 0 SW\n"
-    setup_str += "S3 Ku K_U_RISE RISE 0 SW\n"
-    setup_str += "S4 Ku K_U_FALL FALL 0 SW\n"
-    setup_str += "S5 Ku K_U_HIGH HIGH 0 SW\n"
-    setup_str += "S6 Ku K_U_LOW LOW 0 SW\n"
+    if not stimulus == 'ALL' and not stimulus == 'TRIG':
+        setup_str += f"V10 {stimulus} 0 1\n"
+        setup_str += f"S1 Ku K_U_{stimulus} {stimulus} 0 SW\n"
+        setup_str += f"S7 Kd K_D_{stimulus} {stimulus} 0 SW\n"
+        return setup_str
+    elif stimulus == 'TRIG':  
+        setup_str += '.model SW_INV SW(Ron=1G Roff=1n Vt=.5 Vh=-.4)\n\n'
+        setup_str += 'S1 Ku K_U_RISE TRIG 0 SW\n'
+        setup_str += 'S2 Ku K_U_FALL TRIG 0 SW_INV\n'
+        setup_str += 'S3 Kd K_D_RISE TRIG 0 SW\n'
+        setup_str += 'S4 Kd K_D_FALL TRIG 0 SW_INV\n'
+        return setup_str
+    else:
+        # Setup the Stimulus setting options for the Pullup Waveform (Ku)
+        setup_str = ".model SW SW(Ron=1n Roff=1G Vt=.5 Vh=-.4)\n\n"
+        setup_str += "\n* Setup the Stimulus setting options for the Pullup Waveform (Ku)\n"
+        setup_str += "V10 OSC 0 {if(stimulus_==1, 1, 0)}\n"
+        setup_str += "V11 OSC_INV 0 {if(stimulus_==2, 1, 0)}\n"
+        setup_str += "V12 RISE 0 {if(stimulus_==3, 1, 0)}\n"
+        setup_str += "V13 FALL 0 {if(stimulus_==4, 1, 0)}\n"
+        setup_str += "V14 HIGH 0 {if(stimulus_==5, 1, 0)}\n"
+        setup_str += "V15 LOW 0 {if(stimulus_==6, 1, 0)}\n"
+        setup_str += "S1 Ku K_U_OSC OSC 0 SW\n"
+        setup_str += "S2 Ku K_U_OSC_INV OSC_INV 0 SW\n"
+        setup_str += "S3 Ku K_U_RISE RISE 0 SW\n"
+        setup_str += "S4 Ku K_U_FALL FALL 0 SW\n"
+        setup_str += "S5 Ku K_U_HIGH HIGH 0 SW\n"
+        setup_str += "S6 Ku K_U_LOW LOW 0 SW\n"
 
-    # Setup the Stimulus setting options for the Pulldown Waveform (Kd)
-    setup_str += "\n* Setup the Stimulus setting options for the Pulldown Waveform (Kd)\n"
-    setup_str += "S7 Kd K_D_OSC OSC 0 SW\n"
-    setup_str += "S8 Kd K_D_OSC_INV OSC_INV 0 SW\n"
-    setup_str += "S9 Kd K_D_RISE RISE 0 SW\n"
-    setup_str += "S10 Kd K_D_FALL FALL 0 SW\n"
-    setup_str += "S11 Kd K_D_HIGH HIGH 0 SW\n"
-    setup_str += "S12 Kd K_D_LOW LOW 0 SW\n"
-
+        # Setup the Stimulus setting options for the Pulldown Waveform (Kd)
+        setup_str += "\n* Setup the Stimulus setting options for the Pulldown Waveform (Kd)\n"
+        setup_str += "S7 Kd K_D_OSC OSC 0 SW\n"
+        setup_str += "S8 Kd K_D_OSC_INV OSC_INV 0 SW\n"
+        setup_str += "S9 Kd K_D_RISE RISE 0 SW\n"
+        setup_str += "S10 Kd K_D_FALL FALL 0 SW\n"
+        setup_str += "S11 Kd K_D_HIGH HIGH 0 SW\n"
+        setup_str += "S12 Kd K_D_LOW LOW 0 SW\n"
     return setup_str
 
 
@@ -427,25 +440,28 @@ def create_ltspice_output_model(
         device_netlist = define_pullup_and_pulldown_devices(ibis_data, corner)
         spice_str+=device_netlist
 
-        stimulus_netlist = ltspice_stimulus_netlist_setup() # Look at this in more detail
+        stimulus_netlist = ltspice_stimulus_netlist_setup(stimulus)
         spice_str+=stimulus_netlist
 
         (offset_neg_r, offset_pos_r) = determine_crossover_offsets(kr)
         (offset_neg_f, offset_pos_f) = determine_crossover_offsets(kf)
 
+
         # Calculations for defining the frequency and duty cycle of the oscillation stimuli'
-        spice_str+=f'\n* Define Oscillation Sources\n'
-        spice_str+=f'.param calc_gap_pos = {{(duty/freq) - {offset_pos_r} - {offset_neg_f}}}\n'
-        spice_str+=f'.param calc_gap_neg = {{((1-duty)/freq) - {offset_pos_f} - {offset_neg_r}}}\n\n'
-        spice_str+=f'.param GAP_POS = {{if(calc_gap_pos <= 0, 0.1e-12, calc_gap_pos)}}\n'
-        spice_str+=f'.param GAP_NEG = {{if(calc_gap_neg <= 0, 0.1e-12, calc_gap_neg)}}\n\n'
+        if stimulus in ['OSC', 'OSC_INV', 'RAND', 'RAND_INV', 'ALL']:
+            spice_str+=f'\n* Define Oscillation Sources\n'
+            spice_str+=f'.param calc_gap_pos = {{(duty/freq) - {offset_pos_r} - {offset_neg_f}}}\n'
+            spice_str+=f'.param calc_gap_neg = {{((1-duty)/freq) - {offset_pos_f} - {offset_neg_r}}}\n\n'
+            spice_str+=f'.param GAP_POS = {{if(calc_gap_pos <= 0, 0.1e-12, calc_gap_pos)}}\n'
+            spice_str+=f'.param GAP_NEG = {{if(calc_gap_neg <= 0, 0.1e-12, calc_gap_neg)}}\n\n'
 
-        max_stimulus = 6
-        if ibis_data.model_type.lower() == "3-state":
-            max_stimulus = 7
+        if stimulus == 'ALL':
+            max_stimulus = 6
+            if ibis_data.model_type.lower() == "3-state":
+                max_stimulus = 7
 
-        # Limit the stimulus between 1 and 7
-        spice_str+=f'.param stimulus_ = {{if(stimulus < 1, 1, if(stimulus > {max_stimulus}, {max_stimulus}, stimulus)}}\n\n'
+            # Limit the stimulus between 1 and 7
+            spice_str+=f'.param stimulus_ = {{if(stimulus < 1, 1, if(stimulus > {max_stimulus}, {max_stimulus}, stimulus)}}\n\n'
 
         # Oscillation Strings
         if ibis_data.model_type.lower() == "open_drain":
