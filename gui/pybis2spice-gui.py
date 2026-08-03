@@ -218,10 +218,13 @@ def create_subcircuit_file(ibis_data, subcircuit_type, corner, io_type, stimulus
     if corner == "All":
         file = filedialog.askdirectory(parent=main_window)
     else:
-        filename = f'{ibis_data.model_name}-{io_type}-{corner}.sub'
+        if io_type != 'Input':
+            filename = f'{ibis_data.model_name}_{io_type}_{corner}_{stimulus}.sub' if not stimulus is None else f'{ibis_data.model_name}_{io_type}_{corner}.sub'
+        else:
+            filename = f'{ibis_data.model_name}_{io_type}_{corner}.sub'
         file = filedialog.asksaveasfile(parent=main_window,
                                         title='Choose a file',
-                                        filetypes=[("Subcircuit Files", ".sub")],
+                                        filetypes=[("Subcircuit Files", ".sub"), ("Library Files", '.lib')],
                                         initialfile=f"{filename}")
         if not file is None:
             file = file.name
@@ -234,7 +237,10 @@ def create_subcircuit_file(ibis_data, subcircuit_type, corner, io_type, stimulus
             corners:List[sckt._CORNER] = ["WeakSlow", "Typical", "FastStrong"]
             filepaths = []
             for _corner in corners:
-                filename = f'{ibis_data.model_name}-{io_type}-{_corner}.sub'
+                if io_type != 'Input':
+                    filename = f'{ibis_data.model_name}_{io_type}_{_corner}_{stimulus}.sub' if not stimulus is None else f'{ibis_data.model_name}_{io_type}_{_corner}.sub'
+                else:
+                    filename = f'{ibis_data.model_name}_{io_type}_{_corner}.sub'
                 filepath = os.path.join(file, filename)
                 filepaths.append(filepath)
                 logging.info(f"Creating subcircuit for {_corner} corner at {filepath}")
@@ -286,7 +292,7 @@ def create_subcircuit_file(ibis_data, subcircuit_type, corner, io_type, stimulus
 
                 # Create symbol
                 if subcircuit_type == "LTSpice":
-                    symbol_file = sckt.create_ltspice_symbol(ibis_data, corner, file, io_type)
+                    symbol_file = sckt.create_ltspice_symbol(ibis_data, corner, file, io_type, stimulus)
                     logging.info(f"LTSpice Symbol created at: {symbol_file}")
                     message_success += f"\n\nLTSpice symbol also created successfully at:\n{symbol_file}\n"
 
@@ -863,11 +869,10 @@ if __name__ == '__main__':
     
     def update_combo_state(*args): # Callback function for trace
         if io_type_var.get() == 'Output':
-            stimulus_combo.configure(state="readonly")
+            stimulus_combo.configure(state="enabled")
             stimulus_combo.set("ALL")
-        else:
+        if io_type_var.get() == 'Input':
             stimulus_combo.configure(state="disabled")
-            stimulus_combo.set(None)
 
     io_type_var.trace_add("write", update_combo_state)
 
@@ -889,6 +894,12 @@ if __name__ == '__main__':
         else:
             input_box.configure(state="disabled")
             input_var.set(0.0)
+        if io_type_var.get() == 'Output':
+            check1.configure(state="normal")
+            check_var.set(False)
+        if io_type_var.get() == 'Input':
+            check_var.set(False)
+            check1.configure(state="disabled")
 
     check_var.trace_add("write", update_button_state)
 

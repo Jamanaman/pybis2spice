@@ -78,7 +78,7 @@ def spice_header_info(ibis_data:DataModel, corner:_CORNER, extra_info=""):
 
 def spice_subckt_line(ibis_data:DataModel, corner:_CORNER, stimulus:Optional[_STIMULUS], simulator:_SIMULATOR)->str:
     subcircuit_line = f'.SUBCKT {ibis_data.model_name}_Output_{corner}'
-    if not stimulus =='ALL':
+    if not stimulus =='ALL' and not stimulus is None:
         subcircuit_line += '_'+str(stimulus)+' '
     subcircuit_line += ' OUT'
     if stimulus == 'TRIG':
@@ -408,10 +408,9 @@ def create_ltspice_output_model(
     Parameters:
         ibis_data - a DataModel object (defined in pybis2spice.py)
         corner - "Typical", "WeakSlow" or "FastStrong"
-        io_type - "Input" or "Output"
-        output_filepath - path of output file
+        stimulus - stimulus type 
 
-    Returns 0 if there are no errors in the creation
+    Returns spice string for input into spice netlist or to be written to a file
     """
 
     try:
@@ -544,7 +543,7 @@ def create_ltspice_output_model(
                 spice_str+="S13 Ku 0 EN 0 SW\n"
                 spice_str+="S14 Kd 0 EN 0 SW\n"
 
-            spice_str+=f'\n.ENDS\n'
+        spice_str+=f'\n.ENDS\n'
     except Exception as e:
         raise e
 
@@ -567,8 +566,11 @@ def create_ltspice_symbol(
 
     Returns the filepath of the created symbol
     """
-    symbol_path = os.path.join(os.path.dirname(model_path), f'{ibis_data.model_name}-{io_type}-{corner}-{stimulus}.asy')
-    symbol_value = f'{ibis_data.model_name}-{io_type}-{corner}-{stimulus}'
+    if io_type =='Input':
+        symbol_value = f'{ibis_data.model_name}_{io_type}_{corner}'
+    else:
+        symbol_value = f'{ibis_data.model_name}_{io_type}_{corner}_{stimulus}' if not stimulus is None else f'{ibis_data.model_name}_{io_type}_{corner}'
+    symbol_path = os.path.join(os.path.dirname(model_path), f'{symbol_value}.asy')
     model_filename = os.path.basename(model_path)
 
     with open(symbol_path, 'w') as file:
@@ -597,12 +599,18 @@ def create_ltspice_symbol(
             file.write(f"WINDOW 3 8 24 Top 2\n")
             file.write(f"WINDOW 39 8 48 Top 2\n")
             file.write(f"SYMATTR Value {symbol_value}\n")
-            file.write(f"SYMATTR SpiceLine stimulus=1 freq=10Meg duty=0.5 delay=0\n")
+            if stimulus != 'TRIG':
+                file.write(f"SYMATTR SpiceLine stimulus=1 freq=10Meg duty=0.5 delay=0\n")
             file.write(f"SYMATTR Prefix X\n")
             file.write(f"SYMATTR ModelFile {model_filename}\n")
             file.write(f"PIN 32 -32 NONE 8\n")
             file.write(f"PINATTR PinName OUT\n")
             file.write(f"PINATTR SpiceOrder 1\n")
+            if stimulus == 'TRIG':
+                file.write(f"LINE Normal 0 -10 0 0\n")
+                file.write(f"PIN 0 0 NONE 8\n")
+                file.write(f"PINATTR PinName TRIG\n")
+                file.write(f"PINATTR SpiceOrder 2\n")
 
     return symbol_path
 
@@ -700,7 +708,6 @@ def create_ngspice_output_model(
     Parameters:
         ibis_data - a DataModel object (defined in data_model.py)
         corner - "Typical", "WeakSlow" or "FastStrong"
-        io_type - "Input" or "Output"
         truncation - percentage in integer form for truncation tolerance
         stimulus - stimulus type 
 
