@@ -1,12 +1,11 @@
-# ---------------------------------------------------------------------------
-# Author: Kishan Amratia
-# Date: 02-Jan-2022
-# Module Name: build-mac.py
 """
 A build script to create executable versions of the windows gui
 NEEDS TO BE RUN ON A MAC OS MACHINE
+
+Author: Kishan Amratia
+Date: 02-Jan-2022
+Module Name: build-mac.py
 """
-# ---------------------------------------------------------------------------
 
 import PyInstaller.__main__
 import shutil
@@ -80,8 +79,6 @@ def folder_mopup():
 
 
 if __name__ == '__main__':
-
-    version.create_version_txt_file()  # Create the version txt file
 
     if _GENERATE_EXE_GUI:
         gui_filepath = create_gui_exe()

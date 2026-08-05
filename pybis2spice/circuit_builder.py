@@ -1,3 +1,5 @@
+"""This module contains high level functions to build spice model files."""
+
 from . import subcircuit as sckt
 from .data_model import DataModel
 from typing import Optional
@@ -11,12 +13,12 @@ def generate_spice_model_file(
     Wrapper around the subcircuit file creation functions. Calls the relevant function i.e. LTSpice or Generic
 
         Parameters:
-            io_type - "Input" or "Output" or "Tri-State
-            subcircuit_type - "LTSpice" or "Generic"
-            ibis_data - a DataModel object (defined in pybis2spice.py)
-            corner - "WeakSlow" or "Typical" or "FastStrong"
-            output_filepath - path of output file
-            truncation - the percentage of the total range to use to truncate trailing samples in rising and falling waveforms
+            io_type - "Input" or "Output" or "Tri-State"\\
+            subcircuit_type - "LTSpice" or "Generic"\\
+            ibis_data - a DataModel object (defined in pybis2spice.py)\\
+            corner - "WeakSlow" or "Typical" or "FastStrong"\\
+            output_filepath - path of output file\\
+            truncation - the percentage of the total range to use to truncate trailing samples in rising and falling waveforms\\
 
         Returns:
             The spice string

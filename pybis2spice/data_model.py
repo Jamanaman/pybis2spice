@@ -1,18 +1,15 @@
-# ----------------------------------------------------------------------------
-# Author: Kishan Amratia
-# Module Name: pybis2spice.py
-# 
-# Module Description:
-# A python package to help convert an ibis model to a spice model
-# 
-# References:
-# https://www.analog.com/media/en/technical-documentation/application-notes/AN-715.pdf
-#
-# Ying Wang and Han Ngee Tan, "The development of analog SPICE behavioral model based on IBIS model,"
-# Proceedings Ninth Great Lakes Symposium on VLSI, 1999, pp. 101-104,
-# doi: 10.1109/GLSV.1999.757386.
-# 
-# ---------------------------------------------------------------------------
+'''
+This module contains the classes for data models of IBIS files such that 
+code can more easily utilise the data that comes from ecdtools.
+
+References:
+https://www.analog.com/media/en/technical-documentation/application-notes/AN-715.pdf
+
+Ying Wang and Han Ngee Tan, "The development of analog SPICE behavioral model based on IBIS model,"
+Proceedings Ninth Great Lakes Symposium on VLSI, 1999, pp. 101-104,
+doi: 10.1109/GLSV.1999.757386.
+
+'''
 
 
 # ---------------------------------------------------------------------------
@@ -35,13 +32,13 @@ class Waveform(object):
     A data container for a single waveform with a given v_fixture and r_fixture condition
     Used by the DataModel object
 
-        Parameters:
-            waveform_obj: the waveform object from the ecdtools library
-
-        Contains 3 attributes:
-            data: numpy array with the waveform data in 3 columns [time, v_typ, v_min, v_max]
-            v_fix: numpy array with the v_fixture conditions for the 3 corners. Organised in 3 columns [typ, min, max]
-            r_fix: the r_fixture resistance for the waveform
+        Attributes
+            data: NDArray
+                numpy array with the waveform data in 3 columns [time, v_typ, v_min, v_max]
+            v_fix: NDArray
+                numpy array with the v_fixture conditions for the 3 corners. Organised in 3 columns [typ, min, max]
+            r_fix: float
+                the r_fixture resistance for the waveform
     """
 
     def __init__(self, waveform_obj):
@@ -65,10 +62,13 @@ class DataModel(object):
         """
         Populate the attributes of the DataModel object
 
-            Parameters:
-                ibis_ecdtools: the ecdtools object from the ecdtools.ibis.load_file() function.
-                model_name: model name as defined in ibis model
-                component_name: component name as defined in ibis model
+            Parameters
+                ibis_ecdtools
+                    the ecdtools object from the ecdtools.ibis.load_file() function.
+                model_name
+                    model name as defined in ibis model
+                component_name
+                    component name as defined in ibis model
 
             All Data is stored in numpy arrays organised in columns as typical, min and max:
                 For parasitics, it is typ, min, max
@@ -190,7 +190,7 @@ class DataModel(object):
 # Main Calculation Helper Functions
 # ---------------------------------------------------------------------------
 
-def extract_range_param(obj)->Optional[NDArray]:
+def extract_range_param(obj: ecd.TypMinMax)->Optional[NDArray]:
     """
     takes a TypMinMax object from the ecdtools and returns a numpy array organised as [Typ, Min, Max]
     """
@@ -255,14 +255,21 @@ def generate_ramp(ramp_rate: Tuple[float, float], v_high:float = 1.2, v_low:floa
     start and end voltages, this function starts the linear ramp at a time point equal to half the given duration of the 
     linear ramp and then adds another half ramp duration after the end of the linear ramp to reach the final high voltage.
 
-        Parameters:
-            ramp_rate: Tuple in the form (dv, dt) 
-            v_high: logic high voltage
-            v_low: logic low voltage
-            ramp_type: either 'Rising' or 'Falling'
+    Parameters
+    ----------
+    ramp_rate
+        Tuple in the form (dv, dt) 
+    v_high
+        logic high voltage
+    v_low
+        logic low voltage
+    ramp_type
+        either 'Rising' or 'Falling'
 
-        Returns:
-            ramp: numpy array of ramp data
+    Returns
+    -------
+    ramp
+        numpy array of ramp data
 
     ## Potential Improvements:
     Add options for ramp shapes to give the designer the choice for smoother ramps or ramps with stepped behaviours.
@@ -289,17 +296,22 @@ def generate_ramp(ramp_rate: Tuple[float, float], v_high:float = 1.2, v_low:floa
     return np.asarray(ramp, dtype='float64')
 
 
-def adjust_device_data(iv_device, iv_clamp):
+def adjust_device_data(iv_device: NDArray, iv_clamp: NDArray) -> NDArray:
     """
     The pullup and pulldown data in the IBIS model is captured with clamps still present.
     This function can adjust the device data using the clamp data.
 
-        Parameters:
-            iv_device: pull-up or pull-down device iv table
-            iv_clamp: power-clamp or ground clamp iv table
+    Parameters
+    ----------
+    iv_device
+        pull-up or pull-down device iv table
+    iv_clamp
+        power-clamp or ground clamp iv table
 
-        Returns:
-            iv_adj: The adjusted iv table
+    Returns
+    -------
+    NDArray
+        The adjusted iv table
     """
     array_size = np.shape(iv_device[:, 0])[0]  # Get size of the table data
     iv_adj = np.zeros([array_size, 4])
@@ -316,14 +328,14 @@ def adjust_device_data(iv_device, iv_clamp):
     return iv_adj
 
 
-def increasing(arr):
+def increasing(arr: NDArray):
     """
     returns True if arr is increasing with equal values allowed. Otherwise returns False
     """
     return all(x <= y for x, y in zip(arr, arr[1:]))
 
 
-def get_current_data_from_iv_data(voltage, iv_data, vcc_ref, corner, iv_data_adjust=None):
+def get_current_data_from_iv_data(voltage: NDArray, iv_data: NDArray, vcc_ref:float, corner:int, iv_data_adjust:Optional[NDArray]=None) -> NDArray:
     """
     Generates an array of current values that interpolate the iv_data from the voltage array given.
     If parameter iv_data_adjust is provided, then the returned array will provide an adjusted iv_data array.
@@ -331,15 +343,23 @@ def get_current_data_from_iv_data(voltage, iv_data, vcc_ref, corner, iv_data_adj
     This is useful for the pullup/pulldown devices, which need to be adjusted with the power/ground clamp currents.
     The returned current array is given as zero values if the IV_data parameter has value of "None"
 
-    Parameters:
-        voltage: a numpy array of voltage values
-        iv_data: numpy array in the form [voltage, I_typ, I_min, I_max]
-        vcc_ref: defines the reference voltage for the iv_data
-        corner: value of either 1, 2 or 3 to signify the typical , slow-weak (min) and fast-strong (max) corners
-        iv_data_adjust: numpy array in the form [voltage, I_typ, I_min, I_max]
+    Parameters
+    ----------
+    voltage
+        a numpy array of voltage values
+    iv_data
+        numpy array in the form [voltage, I_typ, I_min, I_max]
+    vcc_ref
+        defines the reference voltage for the iv_data
+    corner
+        value of either 1, 2 or 3 to signify the typical , slow-weak (min) and fast-strong (max) corners
+    iv_data_adjust
+        numpy array in the form [voltage, I_typ, I_min, I_max]
 
-    Returns:
-        i_arr: A current array interpolated from the given voltage array and adjusted if necessary
+    Returns
+    -------
+    NDArray
+        A current array interpolated from the given voltage array and adjusted if necessary
     """
 
     # Define some constants to help with readability. This represents the column indexes for the relevant data
@@ -388,9 +408,15 @@ def extract_waveforms(waveform_data: List[ecd.Waveform]) -> List[Waveform]:
     """
     Checks if fixture data is valid for the two waveforms present for either a rising or falling edge and then extracts the waveform data.
     
-    :param waveform_data: List of ecd Waveform objects. Should be of length 2.  
-    :return: List of waveforms in Waveform Object format
-    :rtype: List[Waveform]
+    Parameters
+    ----------
+    waveform_data
+        List of ecd Waveform objects. Should be of length 2.  
+    
+    Returns
+    -------
+    List[Waveform]
+        List of waveforms in Waveform Object format
     """
     if waveform_data[0].v_fixture.minimum is None and not waveform_data[1].v_fixture.minimum is None:
         waveform_data[0].v_fixture.minimum = waveform_data[0].v_fixture.typical
@@ -411,23 +437,27 @@ def generate_current_data(
     """
     Generates the current waveforms for the devices and clamps with respect to the given time array
 
-    Parameters:
-        ibis_data: a DataModel object
-        time: a numpy array of time values
-        corner: value of either 1, 2 or 3 to signify the typical , slow-weak (min) and fast-strong (max) corners
-        waveform_obj: the relevant Waveform object
-        truncation: cutoff percentage for truncating the end of the waveform
+    Parameters
+    ----------
+    ibis_data
+        a DataModel object
+    time
+        a numpy array of time values
+    corner
+        value of either 1, 2 or 3 to signify the typical , slow-weak (min) and fast-strong (max) corners
+    waveform_obj
+        the relevant Waveform object
+    truncation
+        cutoff percentage for truncating the end of the waveform
 
-    Returns:
-        tuple of values (i_pu, i_pd, i_pc, i_gc, i_rfix, i_c_comp)
-        each value is a numpy array of a current with respect to the given time array
-            i_pu - pullup device current
-            i_pd - pulldown device current
-            i_pc - power clamp device current
-            i_gc - ground clamp device current
-            i_rfix - current through the r_fix
-            i_c_comp - current through the die-capacitance (c_comp)
-        trunc_idx: integer index of waveform index to truncate the waveform to
+    Returns
+    -------
+    Tuple[NDArray[np.float64], NDArray[np.float64],NDArray[np.float64], NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]
+        pullup device current, pulldown device current, power clamp device current, 
+        ground clamp device current, current through the r_fix, current through the die-capacitance (c_comp)
+    int
+        integer index of waveform index to truncate the waveform to
+
     """
 
     # Define some constants to help with readability. This represents the column indexes for the relevant data
@@ -468,13 +498,19 @@ def solve_k_params_output(ibis_data:DataModel, corner:int=1, waveform_type:str="
     """
     Solves the k-parameters for the ibis model for any 2 or 3-state output buffer
 
-        Parameters:
-            ibis_data: a DataModel object
-            corner: value of either 1, 2 or 3 to signify the typical , slow-weak (min) and fast-strong (max) corners
-            waveform_type: Either "Rising" or "Falling" to select the waveform to solve the k-parameters for
+    Parameters
+    ----------
+    ibis_data
+        a DataModel object
+    corner
+        value of either 1, 2 or 3 to signify the typical , slow-weak (min) and fast-strong (max) corners
+    waveform_type
+        Either "Rising" or "Falling" to select the waveform to solve the k-parameters for
 
-        Returns:
-            k_param: numpy array with 3 columns [time, k_u, k_d]
+    Returns
+    -------
+    NDArray
+        numpy array with 3 columns [time, k_u, k_d]
     """
     # Input 
     if waveform_type == "Rising":
@@ -522,13 +558,19 @@ def solve_k_params_output_open_drain(ibis_data:DataModel, corner:int=1, waveform
     """
     Solves the k-parameters for the ibis model for any 2 or 3-state output buffer
 
-        Parameters:
-            ibis_data: a DataModel object
-            corner: value of either 1, 2 or 3 to signify the typical , slow-weak (min) and fast-strong (max) corners
-            waveform_type: Either "Rising" or "Falling" to select the waveform to solve the k-parameters for
+    Parameters
+    ----------
+    ibis_data
+        a DataModel object
+    corner
+        value of either 1, 2 or 3 to signify the typical , slow-weak (min) and fast-strong (max) corners
+    waveform_type
+        Either "Rising" or "Falling" to select the waveform to solve the k-parameters for
 
-        Returns:
-            k_param: numpy array with 2 columns [time, k_d]
+    Returns
+    -------
+    k_param
+        numpy array with 2 columns [time, k_d]
     """
     # Input
     if waveform_type == "Rising":
@@ -558,16 +600,21 @@ def solve_k_params_output_open_drain(ibis_data:DataModel, corner:int=1, waveform
     return k_param
 
 
-def differentiate(y, x):
+def differentiate(y:NDArray, x:NDArray) -> NDArray:
     """
     Performs a piecewise derivative of y with respect to x
 
-        Parameters:
-            y: numpy array
-            x: numpy array
+    Parameters
+    ----------
+    y
+        numpy array
+    x
+        numpy array
 
-        Returns:
-            dy_dx: The piecewise derivative returned as a numpy array
+    Returns
+    -------
+    NDArray
+        The piecewise derivative returned as a numpy array
     """
     dy = np.diff(y)
     dx = np.diff(x)
@@ -577,17 +624,22 @@ def differentiate(y, x):
     return dy_dx
 
 
-def compress_param(k_param, threshold=1e-6) -> Optional[NDArray]:
+def compress_param(k_param:NDArray, threshold:float=1e-6) -> Optional[NDArray]:
     """
     Compresses the k_parameter waveform by removing redundant samples
     Remove any samples that do not change in value between subsequent samples by more than the given threshold
 
-        Parameters:
-            k_param: numpy array - 2 or 3 columns: [time, Ku, Kd] or [time, K]
-            threshold: threshold value to decide if sample is redundant
+    Parameters
+    ----------
+    k_param
+        numpy array - 2 or 3 columns: [time, Ku, Kd] or [time, K]
+    threshold
+        threshold value to decide if sample is redundant
 
-        Returns:
-            k_comp: The compressed waveform
+    Returns
+    -------
+    NDArray or None 
+        The compressed waveform
     """
     k_comp = None
     num_rows = np.shape(k_param)[0]
@@ -617,17 +669,22 @@ def compress_param(k_param, threshold=1e-6) -> Optional[NDArray]:
 
     return k_comp
 
-def find_waveform_cutoff_for_truncation(vt, diff_to_trim)-> int:
+def find_waveform_cutoff_for_truncation(vt:NDArray, diff_to_trim:float)-> int:
     """
     Truncates the k_parameter waveform by removing samples from the end of the waveform till the last sample 
     is within a specified difference from the sample before based on percentage of the value range of the waveform.
 
-        Parameters:
-            vt: voltage waveform 
-            diff_to_trim: diff_to_trim value to decide if sample is redundant
+    Parameters
+    ----------
+    vt
+        voltage waveform 
+    diff_to_trim
+        diff_to_trim value to decide if sample is redundant
 
-        Returns:
-            idx: index to trim to from the end of the time series 
+    Returns
+    -------
+    int
+        index to trim to from the end of the time series 
     """
     idx = 1
     wave_range = (max(vt)-min(vt))

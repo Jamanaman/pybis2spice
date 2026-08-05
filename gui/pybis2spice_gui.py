@@ -1,11 +1,10 @@
-# ---------------------------------------------------------------------------
-# Author: Kishan Amratia
-# Date: 02-Jan-2022
-# Module Name: pybis2spice-gui.py
 """
 A tkinter GUI for helping users to convert IBIS models into SPICE models
+
+Author: Kishan Amratia
+Date: 02-Jan-2022
+Module Name: pybis2spice-gui.py
 """
-# ---------------------------------------------------------------------------
 import matplotlib.pyplot as plt
 
 from pybis2spice import data_model as dm, plot, circuit_builder as ckt_build, subcircuit as sckt, version, img

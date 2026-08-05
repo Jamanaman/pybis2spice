@@ -1,12 +1,11 @@
-# ---------------------------------------------------------------------------
-# Author: Kishan Amratia
-# Date: 02-Jan-2022
-# Module Name: build-win.py
 """
 A build script to create executable versions of the windows gui
 NEEDS TO BE RUN ON A WINDOWS MACHINE
+
+Author: Kishan Amratia
+Date: 02-Jan-2022
+Module Name: build-win.py
 """
-# ---------------------------------------------------------------------------
 
 import PyInstaller.__main__
 import shutil
