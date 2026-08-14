@@ -1,11 +1,10 @@
-# ----------------------------------------------------------------------------
-# Author: Kishan Amratia
-# Module Name: subcircuit.py
-#
-# Module Description:
-# Companion functions for the pybis2spice module to create the SPICE subcircuit file
-#
-# ---------------------------------------------------------------------------
+'''
+Author: Kishan Amratia
+Module Name: subcircuit.py
+
+Module Description:
+Companion functions for the pybis2spice module to create the SPICE subcircuit file
+'''
 
 # ---------------------------------------------------------------------------
 # Imports
@@ -17,7 +16,8 @@ import numpy as np
 from .data_model import DataModel, get_reference, solve_k_params_output_open_drain, solve_k_params_output, compress_param, find_waveform_cutoff_for_truncation
 from .version import get_version
 
-from typing import Literal, Optional, Callable, List
+from typing import Literal, Optional, Callable, List, Tuple
+from numpy.typing import NDArray
 
 _CORNER = Literal['Typical', 'WeakSlow', 'FastStrong']
 _IO_TYPE = Literal['Input', 'Output']
@@ -34,11 +34,15 @@ _KD_OD = 1
 def convert_corner_str_to_index(corner:_CORNER):
     """
     Coverts the corner string into an index number used to reference the arrays within pybis2spice methods
-    Parameters:
-        corner - "Typical", "WeakSlow" or "FastStrong"
+    Parameters
+    ----------
+    corner 
+        "Typical", "WeakSlow" or "FastStrong"
 
-    Returns:
-        index - 0, 1, 2 corresponding to the corner string "Typical", "WeakSlow" and "FastStrong" respectively
+    Returns
+    -------
+    index 
+        0, 1, 2 corresponding to the corner string "Typical", "WeakSlow" and "FastStrong" respectively
     """
     index = 0
     if corner == "Typical":
@@ -51,13 +55,21 @@ def convert_corner_str_to_index(corner:_CORNER):
     return index
 
 
-def spice_header_info(ibis_data:DataModel, corner:_CORNER, extra_info=""):
+def spice_header_info(ibis_data:DataModel, corner:_CORNER, extra_info="") -> str:
     """
-    Returns a header string for the ibis file. Helps create a comment on the SPICE subcircuit file
+    Reads metadata from the ibis model and takes configuration info to generate a header string for the 
+    SPICE subcircuit file.
 
-    Parameters:
-        ibis_data - a DataModel object (defined in pybis2spice.py)
-        corner - "Typical", "WeakSlow" or "FastStrong"
+    Parameters
+    ----------
+    ibis_data 
+        a DataModel object (defined in data_model.py)
+    corner 
+        "Typical", "WeakSlow" or "FastStrong"
+
+    Returns
+    -------
+        header string for the ibis file. Helps create a comment on the SPICE subcircuit file
     """
 
     _INDEX = convert_corner_str_to_index(corner)
@@ -71,12 +83,30 @@ def spice_header_info(ibis_data:DataModel, corner:_CORNER, extra_info=""):
     st += f'* Voltage Level for Corner (V): {ibis_data.v_range[_INDEX]} \n'
     st += f'* Temperature Range (degC): {ibis_data.temp_range} (Typ, Min, Max)\n'
     st += f'* SPICE subcircuit model created with pybis2spice version {get_version()}\n'
-    st += f'* For more info, visit https://github.com/kamratia1/pybis2spice/\n*\n'
+    st += f'* For more info, visit https://github.com/Jamanaman/pybis2spice\n*\n'
     st += f'{extra_info}'
     st += "*********************************************************************\n\n"
     return st
 
 def spice_subckt_line(ibis_data:DataModel, corner:_CORNER, stimulus:Optional[_STIMULUS], simulator:_SIMULATOR)->str:
+    """
+    Reads model data and generates a subcircuit directive based on the model name and the configuration for the spice model.
+
+    Parameters
+    ----------
+    ibis_data 
+        a DataModel object (defined in data_model.py)
+    corner 
+        "Typical", "WeakSlow" or "FastStrong"
+    stimulus
+        stimulus type as defined in _STIMULUS
+    simulator 
+        'Generic', 'ngSPICE' or 'LTSpice'
+
+    Returns
+    -------
+        spice subcircuit directive string
+    """
     subcircuit_line = f'.SUBCKT {ibis_data.model_name}_Output_{corner}'
     if not stimulus =='ALL' and not stimulus is None:
         subcircuit_line += '_'+str(stimulus)+' '
@@ -93,13 +123,20 @@ def spice_subckt_line(ibis_data:DataModel, corner:_CORNER, stimulus:Optional[_ST
         subcircuit_line += f' freq=10Meg duty=0.5 delay=0 \n\n'
     return subcircuit_line
 
-def spice_rlc_netlist(ibis_data:DataModel, corner:_CORNER, pin_name:str):
+def spice_rlc_netlist(ibis_data:DataModel, corner:_CORNER, pin_name:str) -> str:
     """
-    Returns a netlist string for the r_pkg, l_pkg,  c_comp
+    Reads ibis data to extract the RLC network describing connections of the package.
 
-    Parameters:
-        ibis_data - a DataModel object (defined in pybis2spice.py)
-        corner - "Typical", "WeakSlow" or "FastStrong"
+    Parameters
+    ----------
+    ibis_data 
+        a DataModel object (defined in data_model.py)
+    corner 
+        "Typical", "WeakSlow" or "FastStrong"
+
+    Returns
+    -------
+        netlist string for the r_pkg, l_pkg,  c_comp
     """
     _INDEX = convert_corner_str_to_index(corner)
     c_pkg = ibis_data.c_pkg[_INDEX]
@@ -159,11 +196,18 @@ def spice_rlc_netlist(ibis_data:DataModel, corner:_CORNER, pin_name:str):
 def define_pwr_and_gnd_clamps(ibis_data:DataModel, corner:_CORNER, ng=False):
     """
     Arbitrary Source definition for power and ground clamp
-    Parameters:
-        ibis_data - a DataModel object (defined in pybis2spice.py)
-        corner - "Typical", "WeakSlow" or "FastStrong"
+    Parameters
+    ----------
+    ibis_data 
+        a DataModel object (defined in data_model.py)
+    corner
+        "Typical", "WeakSlow" or "FastStrong"
+    ng
+        bool for whether ngspice is the chosen simulator or not
 
-    Returns the netlist for the arbitrary source
+    Returns
+    -------
+        netlist for the arbitrary source
     """
 
     _INDEX = convert_corner_str_to_index(corner)
@@ -206,11 +250,18 @@ def define_pwr_and_gnd_clamps(ibis_data:DataModel, corner:_CORNER, ng=False):
 def define_pullup_and_pulldown_devices(ibis_data:DataModel, corner:_CORNER, ng=False):
     """
     Arbitrary Source definition for pullup and pulldown devices
-    Parameters:
-        ibis_data - a DataModel object (defined in pybis2spice.py)
-        corner - "Typical", "WeakSlow" or "FastStrong"
+    Parameters
+    ----------
+    ibis_data 
+        a DataModel object (defined in data_model.py)
+    corner 
+        "Typical", "WeakSlow" or "FastStrong"
+    ng
+        bool for whether ngspice is the chosen simulator or not
 
-    Returns the netlist for the arbitrary source for the devices
+    Returns
+    -------
+        netlist for the arbitrary source for the devices
     """
 
     _INDEX = convert_corner_str_to_index(corner)
@@ -252,11 +303,18 @@ def create_input_model(ibis_data:DataModel, corner:_CORNER, ng=False) -> str:
     Creates a SPICE generic subcircuit model.
     Generic models are simple and only supports a single oscillation pulse with a given frequency
 
-    Parameters:
-        ibis_data - a DataModel object (defined in pybis2spice.py)
-        corner - "Typical", "WeakSlow" or "FastStrong"
-        io_type - "Input" or "Output"
-        output_filepath - path of output file
+    Parameters
+    ----------
+    ibis_data 
+        a DataModel object (defined in data_model.py)
+    corner 
+        "Typical", "WeakSlow" or "FastStrong"
+    io_type 
+        "Input" or "Output"
+
+    Returns
+    -------
+        spice string of generated input model 
     """
     try:
         spice_str = ''
@@ -283,15 +341,20 @@ def create_generic_output_model(
     Creates a SPICE generic subcircuit model.
     Generic models are simple and only supports a single oscillation pulse with a given frequency
 
-    Parameters:
-        ibis_data - a DataModel object (defined in pybis2spice.py)
-        corner - "Typical", "WeakSlow" or "FastStrong"
-        io_type - "Input" or "Output"
-        k_param_rise - the k_parameter numpy array for the rising waveform (output of the solve_k_params_output method)
-        k_param_fall - the k_parameter numpy array for the falling waveform (output of the solve_k_params_output method)
-        output_filepath - path of output file
+    Parameters
+    ----------
+    ibis_data 
+        a DataModel object (defined in data_model.py)
+    corner 
+        "Typical", "WeakSlow" or "FastStrong"
+    truncation
+        truncation proportion between 0 and 1 for amplitude windowing
+    stimulus 
+        stimulus type as defined in _STIMULUS
 
-    Returns spice string for writing to file or direct input into SPICE
+    Returns
+    -------
+        spice string for writing to file or direct input into SPICE
     """
     try:
         _INDEX = convert_corner_str_to_index(corner)
@@ -352,7 +415,7 @@ def create_generic_output_model(
     return spice_str
 
 
-def ltspice_stimulus_netlist_setup(stimulus:Optional[_STIMULUS]):
+def ltspice_stimulus_netlist_setup(stimulus:Optional[_STIMULUS])->str:
     """
     Returns a netlist string that sets up the LTSpice stimulus sources for the model
     """
@@ -400,17 +463,25 @@ def ltspice_stimulus_netlist_setup(stimulus:Optional[_STIMULUS]):
 def create_ltspice_output_model(
         ibis_data:DataModel, corner:_CORNER, 
         truncation:float, stimulus: Optional[_STIMULUS] = None
-        ):
+        ) -> str:
     """
     Creates a SPICE subcircuit model designed for LTSpice.
     LTSpice specific models provide extra functionality to manipulate the waveform stimulus of the output
 
-    Parameters:
-        ibis_data - a DataModel object (defined in pybis2spice.py)
-        corner - "Typical", "WeakSlow" or "FastStrong"
-        stimulus - stimulus type 
+    Parameters
+    ----------
+    ibis_data 
+        a DataModel object (defined in data_model.py)
+    corner 
+        "Typical", "WeakSlow" or "FastStrong"
+    truncation
+        truncation proportion between 0 and 1
+    stimulus 
+        stimulus type as defined in _STIMULUS
 
-    Returns spice string for input into spice netlist or to be written to a file
+    Returns
+    -------
+        spice string for input into spice netlist or to be written to a file
     """
 
     try:
@@ -552,19 +623,26 @@ def create_ltspice_output_model(
 def create_ltspice_symbol(
         ibis_data:DataModel, corner:_CORNER, model_path:str, 
         io_type:_IO_TYPE, stimulus: Optional[_STIMULUS] = None
-        ):
+        ) -> str:
     """
     Creates an LTSpice symbol for the given model_path within the model_path directory
     This helps with the relative referencing of the model_path within the symbol file.
     The symbol is given the same name as the model for consistency.
 
-    Parameters:
-        ibis_data - a DataModel object (defined in pybis2spice.py)
-        corner - "Typical", "WeakSlow" or "FastStrong"
-        model_path - filepath of the subcircuit model
-        io_type - "Input" or "Output"
+    Parameters
+    ----------
+    ibis_data 
+        a DataModel object (defined in data_model.py)
+    corner 
+        "Typical", "WeakSlow" or "FastStrong"
+    model_path 
+        filepath of the subcircuit model
+    io_type 
+        "Input" or "Output"
 
-    Returns the filepath of the created symbol
+    Returns
+    -------
+        filepath of the created symbol
     """
     if io_type =='Input':
         symbol_value = f'{ibis_data.model_name}_{io_type}_{corner}'
@@ -614,7 +692,7 @@ def create_ltspice_symbol(
 
     return symbol_path
 
-def ngspice_stimulus_netlist_setup(stimulus: Optional[_STIMULUS]):
+def ngspice_stimulus_netlist_setup(stimulus: Optional[_STIMULUS]) -> str:
     """
     Returns a netlist string that sets up the ngSPICE stimulus sources for the model
     """
@@ -705,13 +783,20 @@ def create_ngspice_output_model(
     Creates a SPICE subcircuit model designed for ngSPICE.
     ngSPICE specific models provide extra functionality to manipulate the waveform stimulus of the output
 
-    Parameters:
-        ibis_data - a DataModel object (defined in data_model.py)
-        corner - "Typical", "WeakSlow" or "FastStrong"
-        truncation - percentage in integer form for truncation tolerance
-        stimulus - stimulus type 
+    Parameters
+    ----------
+    ibis_data 
+        a DataModel object (defined in data_model.py)
+    corner 
+        "Typical", "WeakSlow" or "FastStrong"
+    truncation 
+        percentage in integer form for truncation tolerance
+    stimulus 
+        stimulus type 
 
-    Returns the created spice string
+    Returns
+    -------
+        created spice string
     """
 
     try:
@@ -871,16 +956,20 @@ def create_ngspice_output_model(
 
     return spice_str
 
-def convert_iv_table_to_str(voltage, current):
-    """
+def convert_iv_table_to_str(voltage:NDArray, current:NDArray) -> str:
+    """ 
     Creates the IV table of values for the current sources modelling the devices and clamps
 
-        Parameters:
-            voltage - numpy voltage array
-            current - corresponding numpy current array
+    Parameters
+    ----------
+    voltage 
+        numpy voltage array
+    current 
+        corresponding numpy current array
 
-        Returns:
-            str_val: the string that goes into subcircuit table
+    Returns
+    -------
+        the string that goes into subcircuit table
     """
     str_val = f'{voltage[0]}, {current[0]}'
     for i in range(1, len(voltage)):
@@ -888,16 +977,20 @@ def convert_iv_table_to_str(voltage, current):
     return str_val
 
 
-def create_edge_waveform_pwl(time, k_param):
+def create_edge_waveform_pwl(time:NDArray, k_param:NDArray) -> str:
     """
     Creates the PWL value string for the edge waveform
 
-        Parameters:
-            time - numpy time array for k parameter waveform
-            k_param - numpy array for k_r or k_f waveform
+    Parameters
+    ----------
+    time 
+        numpy time array for k parameter waveform
+    k_param 
+        numpy array for k_r or k_f waveform
 
-        Returns:
-            str_val: the string that goes into PWL source for the edge
+    Returns
+    -------
+        the string that goes into PWL source for the edge
     """
     str_val = f'0, {k_param[0]}'
     for i in range(1, len(time)):
@@ -905,18 +998,28 @@ def create_edge_waveform_pwl(time, k_param):
     return str_val
 
 
-def create_osc_waveform_pwl(t1, k1, t2, k2, ng=False, *args, **kwargs):
+def create_osc_waveform_pwl(
+        t1:NDArray, k1:NDArray, 
+        t2:NDArray, k2:NDArray, 
+        ng:bool=False, *args, **kwargs
+        ):
     """
     Creates the PWL value string for the oscillation waveform
 
-        Parameters:
-            t1 - numpy time array for first edge (rising or falling)
-            t2 - numpy time array for second edge (rising or falling)
-            k1 - numpy ku or kd array for first edge (rising or falling)
-            k2 - numpy ku or kd array for second edge (rising or falling)
+    Parameters
+    ----------
+    t1 
+        numpy time array for first edge
+    t2 
+        numpy time array for second edge
+    k1 
+        numpy ku or kd array for first edge
+    k2 
+        numpy ku or kd array for second edge
 
-        Returns:
-            str_val: the string that goes into the oscillator PWL source
+    Returns
+    -------
+        the string that goes into the oscillator PWL source
     """
     def _create_ngspice_osc_waveform_pwl(t1, k1, t2, k2):
         if t1[0] != 0:
@@ -957,9 +1060,14 @@ def create_osc_waveform_pwl(t1, k1, t2, k2, ng=False, *args, **kwargs):
     # gap_pos and gap_neg are parameters calculated within SPICE to oscillate at the right frequency and duty
     return str_val
 
-def create_pwl_strings(pwl_func: Callable, k1, k2, open_drain: bool = False, ng: bool = True, **kwargs):
+def create_pwl_strings(
+        pwl_func:Callable, k1:NDArray, 
+        k2:NDArray, open_drain:bool = False, 
+        ng:bool = True, 
+        **kwargs
+        ):
     '''
-    
+    Wrapper for pwl string functions to check open drain logic and output the correct pair of strings.
     '''
     if open_drain:
         kd_pwl_str = pwl_func(k1[:, _TIME], k1[:, _KD_OD], k2[:, _TIME], k2[:, _KD_OD], ng=ng, **kwargs)
@@ -969,20 +1077,27 @@ def create_pwl_strings(pwl_func: Callable, k1, k2, open_drain: bool = False, ng:
         kd_pwl_str = pwl_func(k1[:, _TIME], k1[:, _KD], k2[:, _TIME], k2[:, _KD], ng=ng, **kwargs)
         return ku_pwl_str, kd_pwl_str
 
-def create_arb_bitstream_pwl(t1, k1, t2, k2, ng=False, bitstream: List[int] = [random.randint(0, 1) for _ in range(127)]):
+def create_arb_bitstream_pwl(t1:NDArray, k1:NDArray, t2:NDArray, k2:NDArray, ng:bool=False, bitstream:List[int] = [random.randint(0, 1) for _ in range(127)]) -> str:
     """
-    Creates the PWL value string for an arbitrary bitstream
+    Creates the PWL value string for an arbitrary bitstream. By choosing which k-parameter array one wants for k1 and k2, 
+    one can choose whether to have a rising or falling edge first.
 
-        Parameters:
-            t1 - numpy time array for first edge (rising or falling)
-            t2 - numpy time array for second edge (rising or falling)
-            k1 - numpy ku or kd array for first edge (rising or falling)
-            k2 - numpy ku or kd array for second edge (rising or falling)
+    Parameters
+    ----------
+    t1 
+        numpy time array for first edge
+    t2 
+        numpy time array for second edge
+    k1 
+        numpy ku or kd array for first edge
+    k2 
+        numpy ku or kd array for second edge
 
-        Returns:
-            str_val: the string that goes into the oscillator PWL source
+    Returns
+    -------
+        the string that goes into the oscillator PWL source
     """
-    def _create_ngspice_bitstream_waveform_pwl(t1, k1, t2, k2, bitstream):
+    def _create_ngspice_bitstream_waveform_pwl(t1:NDArray, k1:NDArray, t2:NDArray, k2:NDArray, bitstream:List[int]) -> str:
 
         str_val = ''
 
@@ -1038,22 +1153,25 @@ def create_arb_bitstream_pwl(t1, k1, t2, k2, ng=False, bitstream: List[int] = [r
     return str_val
 
 
-def determine_crossover_offsets(k_param):
+def determine_crossover_offsets(k_param:NDArray)->Tuple[float, float]:
     """
-    returns the approximate crossover point between the rising and falling k_param waveforms
-        offset_neg: Time offset between beginning of k_param to crossover point
-        offset_pos: Time offset between crossover point to end of k_param
+    Finds crossover point between rising and falling waveform in k_param NDArray.
+
+    Returns
+    -------
+    (offset_neg, offset_pos)
+        Time offset between beginning of k_param to crossover point and between crossover point to end of k_param
     """
 
     # crossover time point (x_t)
     if np.shape(k_param)[1] == 3:
         # Find the index of the minimum value of the difference between k_u and k_d
         index = np.argmin(np.absolute(k_param[:, 1] - k_param[:, 2]))
-        x_t = k_param[index, 0]
+        x_t:float = k_param[index, 0]
     else:
         # Find the index of the value at the halfway voltage point of the k-param waveform
         index = np.argmin((np.max(k_param[:, 1]) - np.min(k_param[:, 1]))/2)
-        x_t = k_param[index, 0]
+        x_t:float = k_param[index, 0]
 
     # Time offset
     offset_neg = x_t - k_param[0][0]

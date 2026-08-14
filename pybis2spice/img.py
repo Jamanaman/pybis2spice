@@ -1,12 +1,11 @@
-# ---------------------------------------------------------------------------
-# Author: Kishan Amratia
-# Date: 07-March-2022
-# Module Name: img.py
 """
 Images are encoded as Base64 string
 Use gif images to do the conversion
+
+Author: Kishan Amratia
+Date: 07-March-2022
+Module Name: img.py
 """
-# ---------------------------------------------------------------------------
 
 icon = '''
 R0lGODlhAAEAAfcAAAAAAAAAMwAAZgAAmQAAzAAA/wArAAArMwArZgArmQArzAAr/wBVAABVMwBV

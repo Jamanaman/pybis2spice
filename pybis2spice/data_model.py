@@ -11,7 +11,6 @@ doi: 10.1109/GLSV.1999.757386.
 
 '''
 
-
 # ---------------------------------------------------------------------------
 # Imports
 # ---------------------------------------------------------------------------
@@ -32,13 +31,14 @@ class Waveform(object):
     A data container for a single waveform with a given v_fixture and r_fixture condition
     Used by the DataModel object
 
-        Attributes
-            data: NDArray
-                numpy array with the waveform data in 3 columns [time, v_typ, v_min, v_max]
-            v_fix: NDArray
-                numpy array with the v_fixture conditions for the 3 corners. Organised in 3 columns [typ, min, max]
-            r_fix: float
-                the r_fixture resistance for the waveform
+    Attributes
+    ----------
+        data: NDArray
+            numpy array with the waveform data in 3 columns [time, v_typ, v_min, v_max]
+        v_fix: NDArray
+            numpy array with the v_fixture conditions for the 3 corners. Organised in 3 columns [typ, min, max]
+        r_fix: float
+            the r_fixture resistance for the waveform
     """
 
     def __init__(self, waveform_obj):
@@ -62,20 +62,23 @@ class DataModel(object):
         """
         Populate the attributes of the DataModel object
 
-            Parameters
-                ibis_ecdtools
-                    the ecdtools object from the ecdtools.ibis.load_file() function.
-                model_name
-                    model name as defined in ibis model
-                component_name
-                    component name as defined in ibis model
+        Parameters
+        ----------
+            ibis_ecdtools
+                the ecdtools object from the ecdtools.ibis.load_file() function.
+            model_name
+                model name as defined in ibis model
+            component_name
+                component name as defined in ibis model
 
-            All Data is stored in numpy arrays organised in columns as typical, min and max:
-                For parasitics, it is typ, min, max
-                For IV tables, it is voltage, typ, min, max
-                For VT tables, it is time, typ, min max
+        Note
+        ----
+        All Data is stored in numpy arrays organised in columns as typical, min and max:
+            For parasitics, it is typ, min, max
+            For IV tables, it is voltage, typ, min, max
+            For VT tables, it is time, typ, min max
 
-            If a table or parameter doesn't exist, then it will have a None value
+        If a table or parameter doesn't exist, then it will have a None value
         """
         self.model_name: str  = model_name
         self.component_name: str = component_name
@@ -228,7 +231,7 @@ def extract_iv_table(iv_data: List[Tuple[str|float]]|None):
         arr = arr[arr[:, 0].argsort()]
     return arr
 
-def extract_ramp_data(ramp: ecd.Ramp|None):
+def extract_ramp_data(ramp: ecd.Ramp|None)-> Optional[Tuple[NDArray, NDArray, float]]:
     """
     returns a tuple of the ecdtools object model ramp data in the order: rising ramp rate (typ, min, max), falling ramp rate (typ, min, max), r_load
     """
@@ -270,10 +273,9 @@ def generate_ramp(ramp_rate: Tuple[float, float], v_high:float = 1.2, v_low:floa
     -------
     ramp
         numpy array of ramp data
-
-    ## Potential Improvements:
-    Add options for ramp shapes to give the designer the choice for smoother ramps or ramps with stepped behaviours.
     """
+    # Potential Improvements:
+    # Add options for ramp shapes to give the designer the choice for smoother ramps or ramps with stepped behaviours.
     if ramp_type == 'Rising':
         v_start = v_low
         v_20 = (v_high-v_low)*0.2+v_low
