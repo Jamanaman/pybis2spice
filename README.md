@@ -52,3 +52,4 @@ Developers can contribute to the tool by forking the repository and submitting p
 The tool would not be possible without the ecdtools library. This parses the ibis file into python data structures.
 https://ecdtools.readthedocs.io/en/latest/#
 
+[![Hatch project](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/pypa/hatch/master/docs/assets/badge/v0.json)](https://github.com/pypa/hatch)
