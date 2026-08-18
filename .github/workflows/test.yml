@@ -1,12 +1,9 @@
-name: Python package
+name: Test
 
 on: [push]
 
-name: Test
-
 jobs:
   test:
-    name: python
     runs-on: ubuntu-latest
     strategy:
       matrix:
