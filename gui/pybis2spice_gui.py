@@ -6,8 +6,6 @@ Date: 02-Jan-2022
 Module Name: pybis2spice-gui.py
 """
 import matplotlib.pyplot as plt
-
-from pybis2spice import data_model as dm, plot, circuit_builder as ckt_build, subcircuit as sckt, version, img
 from ecdtools import ibis as ecd #type:ignore
 import tkinter as tk
 from tkinter import ttk
@@ -25,6 +23,10 @@ import os
 import platform
 from typing import List, get_args
 
+from pybis2spice import circuit_builder as ckt_build, data_model as dm, subcircuit as sckt, img, plot
+
+from importlib.metadata import version
+
 logging.basicConfig(level=logging.INFO)
 ibis_file = None  # The ecdtools ibis_model object
 
@@ -41,7 +43,7 @@ def check_platform():
     return system
 
 def check_latest_version():
-    latest_version = version.get_version()
+    latest_version = version("pybis2spice")
 
     url = "https://raw.githubusercontent.com/kamratia1/pybis2spice/main/pybis2spice/version.txt"
     try:
@@ -130,19 +132,18 @@ def help_message_callback():
     help_window.iconphoto(False, _icon_img)
 
     message1 = f"\n\nIBIS to SPICE Converter\n" \
-               f"Version: {version.get_version()}\n" \
-               f"Release Date: {version.get_date()}\n\n\n" \
+               f"Version: {version("pybis2spice")}\n" \
                f"Please report any bugs and issues at the link below.\n" \
                f"Detailed information on how the issue can be reproduced should be provided including \n" \
                f"any IBIS files used and version number of this program."
 
-    url1 = "https://github.com/kamratia1/pybis2spice/issues/"
+    url1 = "https://github.com/Jamanaman/pybis2spice/issues/"
     lbl_message1 = tk.Label(help_window, text=f"{message1}")
     link1 = tk.Label(help_window, text=url1)
     link1.bind("<Button-1>", lambda e: help_url_callback(url1))
 
     message2 = "Help on how to use this tool can be found within the README at "
-    url2 = "https://github.com/kamratia1/pybis2spice/"
+    url2 = "https://github.com/Jamanaman/pybis2spice/"
     lbl_message2 = tk.Label(help_window, text=f"\n\n{message2}")
     link2 = tk.Label(help_window, text=url2)
     link2.bind("<Button-1>", lambda e: help_url_callback(url2))
@@ -154,7 +155,7 @@ def help_message_callback():
 
     latest_version = check_latest_version()
     latest_version_float = float(latest_version)
-    current_version_float = float(version.get_version())
+    current_version_float = float(version("pybis2spice"))
 
     if latest_version_float > current_version_float:
         url3 = "https://github.com/kamratia1/pybis2spice/"
@@ -738,7 +739,7 @@ if __name__ == '__main__':
     main_window = tk.Tk()
     main_window.geometry(f"{_width}x{_height}")
     main_window.resizable(False, False)
-    main_window.title(f" IBIS to SPICE Converter - Version {version.get_version()}")
+    main_window.title(f" IBIS to SPICE Converter - Version {version("pybis2spice")}")
 
     # Set up the Icon
     # Using a base 64 image within a python file so that the exe build does not depend on an external icon file

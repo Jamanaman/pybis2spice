@@ -10,16 +10,16 @@ Module Name: build-mac.py
 import PyInstaller.__main__
 import shutil
 import os
-from pybis2spice import version
 import fnmatch
+from importlib.metadata import version
 
 _GENERATE_EXE_GUI = True
 
 def create_gui_exe():
     # MAKE SURE THE WORKING DIRECTORY IS CLOSED BEFORE RUNNING THESE SCRIPTS
 
-    if os.path.exists(f'pybis2spice-gui_v{version.get_version()}'):
-        os.remove(f'pybis2spice-gui_v{version.get_version()}')
+    if os.path.exists(f'pybis2spice-gui_v{version("pybis2spice")}'):
+        os.remove(f'pybis2spice-gui_v{version("pybis2spice")}')
 
     # PyInstaller.__main__.run([
     #     'pybis2spice-gui.py',
@@ -53,7 +53,7 @@ def recursively_delete_files_with_pattern(directory_path, pattern):
 
 def folder_mopup():
     # Check if version folder already exists within bin and delete it
-    folder_path = os.path.join(os.path.dirname(os.getcwd()), "bin", f"pybis2spice-v{version.get_version()}-mac")
+    folder_path = os.path.join(os.path.dirname(os.getcwd()), "bin", f"pybis2spice-v{version("pybis2spice")}-mac")
     if os.path.exists(folder_path):
         shutil.rmtree(folder_path)
 
@@ -61,7 +61,7 @@ def folder_mopup():
     os.mkdir(folder_path)
 
     # Check if zip exists and delete
-    zip_path = os.path.join(os.path.dirname(os.getcwd()), "bin", f"pybis2spice-v{version.get_version()}-mac.zip")
+    zip_path = os.path.join(os.path.dirname(os.getcwd()), "bin", f"pybis2spice-v{version("pybis2spice")}-mac.zip")
     if os.path.exists(zip_path):
         os.remove(zip_path)
 
@@ -97,8 +97,8 @@ if __name__ == '__main__':
     folder_mopup()
 
     # Zip up the contents
-    base_path = os.path.join(os.path.dirname(os.getcwd()), "bin", f"pybis2spice-v{version.get_version()}-mac")
+    base_path = os.path.join(os.path.dirname(os.getcwd()), "bin", f"pybis2spice-v{version("pybis2spice")}-mac")
     shutil.make_archive(base_name=base_path,
                         format='zip',
                         root_dir=os.path.dirname(base_path),
-                        base_dir=f"pybis2spice-v{version.get_version()}-mac")
+                        base_dir=f"pybis2spice-v{version("pybis2spice")}-mac")
