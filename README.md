@@ -5,7 +5,6 @@ A python tool that converts IBIS models to SPICE models. The ibis model types cu
 * 3-State
 * Open_Drain
 * I/O
-* Differential [WIP]
 
 This tool was originally developed and maintained by Kishan Amratia (https://github.com/kamratia1) but has since moved to a new repo (https://github.com/Jamanaman/pybis2spice) and the project will be continued there for the foreseeable future.
 
@@ -51,5 +50,3 @@ Developers can contribute to the tool by forking the repository and submitting p
 ## References
 The tool would not be possible without the ecdtools library. This parses the ibis file into python data structures.
 https://ecdtools.readthedocs.io/en/latest/#
-
-[![Hatch project](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/pypa/hatch/master/docs/assets/badge/v0.json)](https://github.com/pypa/hatch)

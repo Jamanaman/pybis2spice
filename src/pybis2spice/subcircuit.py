@@ -14,7 +14,7 @@ import random
 
 import numpy as np
 from .data_model import DataModel, get_reference, solve_k_params_output_open_drain, solve_k_params_output, compress_param, find_waveform_cutoff_for_truncation
-from .version import get_version
+from . import __version__
 
 from typing import Literal, Optional, Callable, List, Tuple
 from numpy.typing import NDArray
@@ -82,7 +82,7 @@ def spice_header_info(ibis_data:DataModel, corner:_CORNER, extra_info="") -> str
     st += f'* Voltage Range (V): {ibis_data.v_range} (Typ, Min, Max)\n'
     st += f'* Voltage Level for Corner (V): {ibis_data.v_range[_INDEX]} \n'
     st += f'* Temperature Range (degC): {ibis_data.temp_range} (Typ, Min, Max)\n'
-    st += f'* SPICE subcircuit model created with pybis2spice version {get_version()}\n'
+    st += f'* SPICE subcircuit model created with pybis2spice version {__version__}\n'
     st += f'* For more info, visit https://github.com/Jamanaman/pybis2spice\n*\n'
     st += f'{extra_info}'
     st += "*********************************************************************\n\n"
