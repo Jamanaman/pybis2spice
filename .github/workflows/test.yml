@@ -2,6 +2,10 @@ name: Test
 
 on: [push]
 
+permissions:
+  contents: read
+  code-quality: write
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -11,6 +15,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha 
 
       - name: Install uv
         uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
@@ -20,7 +26,10 @@ jobs:
 
       - name: Run tests
         # For example, using `pytest`
-        run: uv run pytest test --doctest-modules --junitxml=junit/test-results-${{ matrix.python-version }}.xml
+        run: |
+          uv pip install pytest pytest-cov
+          uv run pytest test --doctest-modules --junitxml=junit/test-results-${{ matrix.python-version }}.xml --cov=com --cov-report=xml --cov-report=html
+
       
       - name: Upload pytest test results
         uses: actions/upload-artifact@v4
@@ -29,3 +38,11 @@ jobs:
           path: junit/test-results-${{ matrix.python-version }}.xml
         # Use always() to always run this step to publish test results when there are test failures
         if: ${{ always() }}
+
+      - name: Upload coverage report
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        uses: actions/upload-code-coverage@v1
+        with:
+          file: coverage.xml
+          language: Python
+          label: code-coverage/pytest
