@@ -23,6 +23,12 @@ build-backend = "uv_build"
 [tool.uv.extra-build-dependencies]
 pybis2spice=["uv_build"]
 
+[[tool.uv.index]]
+name = "testpypi"
+url = "https://test.pypi.org/simple/"
+publish-url = "https://test.pypi.org/legacy/"
+explicit = true
+
 [tool.mypy]
 python_version = "3.14"
 
