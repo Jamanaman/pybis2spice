@@ -29,7 +29,7 @@ def create_gui_exe():
     # ])
 
     PyInstaller.__main__.run([
-        'pybis2spice-gui.py',
+        'pybis2spice_gui.py',
         '-iicon.icns',
         '--onefile',
         '--collect-all', 
