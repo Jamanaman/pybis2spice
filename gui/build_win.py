@@ -1,27 +1,27 @@
-# ---------------------------------------------------------------------------
-# Author: Kishan Amratia
-# Date: 02-Jan-2022
-# Module Name: build-win.py
 """
 A build script to create executable versions of the windows gui
 NEEDS TO BE RUN ON A WINDOWS MACHINE
+
+Author: Kishan Amratia
+Date: 02-Jan-2022
+Module Name: build-win.py
 """
-# ---------------------------------------------------------------------------
 
 import PyInstaller.__main__
 import shutil
 import os
-from pybis2spice import version
 import fnmatch
+from importlib.metadata import version
 
 _GENERATE_EXE_GUI = True
+
 
 
 def create_gui_exe():
     # MAKE SURE THE WORKING DIRECTORY IS CLOSED BEFORE RUNNING THESE SCRIPTS
 
-    if os.path.exists(f'pybis2spice-gui_v{version.get_version()}.exe'):
-        os.remove(f'pybis2spice-gui_v{version.get_version()}.exe')
+    if os.path.exists(f'pybis2spice-gui_v{version("pybis2spice")}.exe'):
+        os.remove(f'pybis2spice-gui_v{version("pybis2spice")}.exe')
 
     # PyInstaller.__main__.run([
     #     'pybis2spice-gui.py',
@@ -31,9 +31,13 @@ def create_gui_exe():
     # ])
 
     PyInstaller.__main__.run([
-        'pybis2spice-gui.py',
+        'pybis2spice_gui.py',
         '-iicon.ico',
-        '--onefile'
+        '--onefile',
+        '--collect-all', 
+        'ecdtools',
+        '--collect-all', 
+        'textparser'
     ])
 
     shutil.copy(os.path.join('dist', 'pybis2spice-gui.exe'), os.getcwd())
@@ -55,7 +59,7 @@ def recursively_delete_files_with_pattern(directory_path, pattern):
 
 def folder_mopup():
     # Check if version folder already exists within bin and delete it
-    folder_path = os.path.join(os.path.dirname(os.getcwd()), "bin", f"pybis2spice-v{version.get_version()}-win")
+    folder_path = os.path.join(os.path.dirname(os.getcwd()), "bin", f"pybis2spice-v{version("pybis2spice")}-win")
     if os.path.exists(folder_path):
         shutil.rmtree(folder_path)
 
@@ -63,12 +67,12 @@ def folder_mopup():
     os.mkdir(folder_path)
 
     # Check if zip exists and delete
-    zip_path = os.path.join(os.path.dirname(os.getcwd()), "bin", f"pybis2spice-v{version.get_version()}-win.zip")
+    zip_path = os.path.join(os.path.dirname(os.getcwd()), "bin", f"pybis2spice-v{version("pybis2spice")}-win.zip")
     if os.path.exists(zip_path):
         os.remove(zip_path)
 
     # Copy the executable and the examples directory into the version number folder
-    src_gui_filepath = os.path.join(os.getcwd(), f'pybis2spice-gui_v{version.get_version()}.exe')
+    src_gui_filepath = os.path.join(os.getcwd(), f'pybis2spice-gui_v{version("pybis2spice")}.exe')
     shutil.copy(src_gui_filepath, folder_path)
 
     src_examples_dir = os.path.join(os.path.dirname(os.getcwd()), "examples")
@@ -82,8 +86,6 @@ def folder_mopup():
 
 if __name__ == '__main__':
 
-    version.create_version_txt_file()  # Create the version txt file
-
     if _GENERATE_EXE_GUI:
         gui_filepath = create_gui_exe()
     else:
@@ -92,7 +94,7 @@ if __name__ == '__main__':
     # Rename the GUI file to include the version number
     if os.path.exists(gui_filepath):
         try:
-            os.rename(gui_filepath, os.path.join(os.getcwd(), f'pybis2spice-gui_v{version.get_version()}.exe'))
+            os.rename(gui_filepath, os.path.join(os.getcwd(), f'pybis2spice-gui_v{version("pybis2spice")}.exe'))
         except:
             pass
 
@@ -100,8 +102,8 @@ if __name__ == '__main__':
     folder_mopup()
 
     # Zip up the contents
-    base_path = os.path.join(os.path.dirname(os.getcwd()), "bin", f"pybis2spice-v{version.get_version()}-win")
+    base_path = os.path.join(os.path.dirname(os.getcwd()), "bin", f"pybis2spice-v{version("pybis2spice")}-win")
     shutil.make_archive(base_name=base_path,
                         format='zip',
                         root_dir=os.path.dirname(base_path),
-                        base_dir=f"pybis2spice-v{version.get_version()}-win")
+                        base_dir=f"pybis2spice-v{version("pybis2spice")}-win")

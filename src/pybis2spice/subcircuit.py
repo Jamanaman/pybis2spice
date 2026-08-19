@@ -1,0 +1,1180 @@
+'''
+Author: Kishan Amratia
+Module Name: subcircuit.py
+
+Module Description:
+Companion functions for the pybis2spice module to create the SPICE subcircuit file
+'''
+
+# ---------------------------------------------------------------------------
+# Imports
+# ---------------------------------------------------------------------------
+import os.path
+import random
+
+import numpy as np
+from .data_model import DataModel, get_reference, solve_k_params_output_open_drain, solve_k_params_output, compress_param, find_waveform_cutoff_for_truncation
+from . import __version__
+
+from typing import Literal, Optional, Callable, List, Tuple
+from numpy.typing import NDArray
+
+_CORNER = Literal['Typical', 'WeakSlow', 'FastStrong']
+_IO_TYPE = Literal['Input', 'Output']
+_SIMULATOR = Literal['Generic', 'ngSPICE', 'LTSpice']
+_STIMULUS = Literal['ALL', 'OSC', 'OSC_INV', 'HIGH', 'LOW', 'RISE', 'FALL', 'RAND', 'RAND_INV', 'HIGHZ', 'TRIG']
+
+# IBIS Data File Column Indexes for Waveform Tables
+_TIME = 0
+_KU = 1
+_KD = 2
+_KD_OD = 1
+
+
+def convert_corner_str_to_index(corner:_CORNER):
+    """
+    Coverts the corner string into an index number used to reference the arrays within pybis2spice methods
+    Parameters
+    ----------
+    corner 
+        "Typical", "WeakSlow" or "FastStrong"
+
+    Returns
+    -------
+    index 
+        0, 1, 2 corresponding to the corner string "Typical", "WeakSlow" and "FastStrong" respectively
+    """
+    index = 0
+    if corner == "Typical":
+        index = 0
+    if corner == "WeakSlow":
+        index = 1
+    if corner == "FastStrong":
+        index = 2
+
+    return index
+
+
+def spice_header_info(ibis_data:DataModel, corner:_CORNER, extra_info="") -> str:
+    """
+    Reads metadata from the ibis model and takes configuration info to generate a header string for the 
+    SPICE subcircuit file.
+
+    Parameters
+    ----------
+    ibis_data 
+        a DataModel object (defined in data_model.py)
+    corner 
+        "Typical", "WeakSlow" or "FastStrong"
+
+    Returns
+    -------
+        header string for the ibis file. Helps create a comment on the SPICE subcircuit file
+    """
+
+    _INDEX = convert_corner_str_to_index(corner)
+    st = "*********************************************************************\n*\n"
+    st += f'* IBIS filename: {ibis_data.file_name}\n'
+    st += f'* Component: {ibis_data.component_name}\n'
+    st += f'* Model: {ibis_data.model_name}\n'
+    st += f'* Model Type: {ibis_data.model_type}\n'
+    st += f'* Corner: {corner}\n'
+    st += f'* Voltage Range (V): {ibis_data.v_range} (Typ, Min, Max)\n'
+    st += f'* Voltage Level for Corner (V): {ibis_data.v_range[_INDEX]} \n'
+    st += f'* Temperature Range (degC): {ibis_data.temp_range} (Typ, Min, Max)\n'
+    st += f'* SPICE subcircuit model created with pybis2spice version {__version__}\n'
+    st += f'* For more info, visit https://github.com/Jamanaman/pybis2spice\n*\n'
+    st += f'{extra_info}'
+    st += "*********************************************************************\n\n"
+    return st
+
+def spice_subckt_line(ibis_data:DataModel, corner:_CORNER, stimulus:Optional[_STIMULUS], simulator:_SIMULATOR)->str:
+    """
+    Reads model data and generates a subcircuit directive based on the model name and the configuration for the spice model.
+
+    Parameters
+    ----------
+    ibis_data 
+        a DataModel object (defined in data_model.py)
+    corner 
+        "Typical", "WeakSlow" or "FastStrong"
+    stimulus
+        stimulus type as defined in _STIMULUS
+    simulator 
+        'Generic', 'ngSPICE' or 'LTSpice'
+
+    Returns
+    -------
+        spice subcircuit directive string
+    """
+    subcircuit_line = f'.SUBCKT {ibis_data.model_name}_Output_{corner}'
+    if not stimulus =='ALL' and not stimulus is None:
+        subcircuit_line += '_'+str(stimulus)+' '
+    subcircuit_line += ' OUT'
+    if stimulus == 'TRIG':
+        subcircuit_line += ' TRIG\n'
+    if stimulus == 'ALL':
+        if simulator == 'LTSpice':
+            subcircuit_line+= ' params: '
+        subcircuit_line += f' stimulus=1 freq=10Meg duty=0.5 delay=0 \n\n'
+    if stimulus in ['OSC', 'OSC_INV', 'RAND', 'RAND_INV']:
+        if simulator == 'LTSpice':
+            subcircuit_line+= ' params: '
+        subcircuit_line += f' freq=10Meg duty=0.5 delay=0 \n\n'
+    return subcircuit_line
+
+def spice_rlc_netlist(ibis_data:DataModel, corner:_CORNER, pin_name:str) -> str:
+    """
+    Reads ibis data to extract the RLC network describing connections of the package.
+
+    Parameters
+    ----------
+    ibis_data 
+        a DataModel object (defined in data_model.py)
+    corner 
+        "Typical", "WeakSlow" or "FastStrong"
+
+    Returns
+    -------
+        netlist string for the r_pkg, l_pkg,  c_comp
+    """
+    _INDEX = convert_corner_str_to_index(corner)
+    c_pkg = ibis_data.c_pkg[_INDEX]
+    l_pkg = ibis_data.l_pkg[_INDEX]
+    r_pkg = ibis_data.r_pkg[_INDEX]
+
+    st = ""
+
+    if c_pkg is None:
+        st += f'.param C_pkg = {ibis_data.c_pkg[0]}\n'
+        st += f'* WARNING: The IBIS model does not have a value for the C_pkg for the {corner} corner, ' \
+              f'therefore this has been set to the typical value for C_pkg\n'
+    elif c_pkg == 0:
+        st += f'.param C_pkg = 0.1e-12\n'
+        st += f'* WARNING: Could not parse the C_pkg so has been set to a nominal of 0.1pF\n'
+    else:
+        st += f'.param C_pkg = {c_pkg}\n'
+
+    if l_pkg is None:
+        st += f'.param L_pkg = {ibis_data.l_pkg[0]}\n'
+        st += f'* WARNING: The IBIS model does not have a value for the L_pkg for the {corner} corner, ' \
+              f'therefore this has been set to the typical value for L_pkg\n'
+    elif l_pkg == 0:
+        st += f'.param L_pkg = 1e-9\n'
+        st += f'* WARNING: Could not parse the L_pkg so has been set to a nominal of 1nF\n'
+    else:
+        st += f'.param L_pkg = {l_pkg}\n'
+
+    if r_pkg is None:
+        st += f'.param R_pkg = {ibis_data.r_pkg[0]}\n'
+        st += f'* WARNING: The IBIS model does not have a value for the R_pkg for the {corner} corner, ' \
+              f'therefore this has been set to the typical value for R_pkg\n'
+    elif r_pkg == 0:
+        st += f'.param R_pkg = 0.01\n'
+        st += f'* WARNING: Could not parse the R_pkg so has been set to a nominal of 0.01ohm\n'
+    else:
+        st += f'.param R_pkg = {r_pkg}\n'
+    if any(
+        [not c is None for c in 
+            [ibis_data.c_comp_pullup, ibis_data.c_comp_pulldown, 
+            ibis_data.c_comp_power_clamp, ibis_data.c_comp_gnd_clamp
+            ]
+        ]):
+        st += '.param C_comp = 0\n'
+        st += '* This model has specified C_Comp values for PU/PD networks and or clamps. These will be used instead of c_comp\n\n'
+    else:
+        st += f'.param C_comp = {ibis_data.c_comp[_INDEX]}\n\n'
+
+    st += f'R1 {pin_name} MID {{R_pkg}}\n'
+    st += f'L1 DIE MID {{L_pkg}}\n'
+    st += f'C1 {pin_name} 0 {{C_pkg}}\n'
+    st += f'C2 DIE 0 {{C_comp}}\n\n'
+
+    return st
+
+
+def define_pwr_and_gnd_clamps(ibis_data:DataModel, corner:_CORNER, ng=False):
+    """
+    Arbitrary Source definition for power and ground clamp
+    Parameters
+    ----------
+    ibis_data 
+        a DataModel object (defined in data_model.py)
+    corner
+        "Typical", "WeakSlow" or "FastStrong"
+    ng
+        bool for whether ngspice is the chosen simulator or not
+
+    Returns
+    -------
+        netlist for the arbitrary source
+    """
+
+    _INDEX = convert_corner_str_to_index(corner)
+    _CORNER_INDEX = _INDEX + 1
+
+    pwr_clamp_ref = get_reference(ibis_data.pwr_clamp_ref, ibis_data.v_range, _CORNER_INDEX)
+    gnd_clamp_ref = get_reference(ibis_data.gnd_clamp_ref, 0, _CORNER_INDEX)
+
+    return_val = ""
+
+    # Arbitrary Source definition for power and ground clamp
+    if ibis_data.iv_pwr_clamp is not None:
+        return_val += f'V1 PWR_CLAMP_REF 0 {pwr_clamp_ref}\n'
+        if not ibis_data.c_comp_power_clamp is None:
+            return_val += f'C11 DIE PWR_CLAMP_REF {ibis_data.c_comp_power_clamp[_INDEX]}\n'
+        pwr_clamp_table_str = convert_iv_table_to_str(np.flip(pwr_clamp_ref - ibis_data.iv_pwr_clamp[:, 0]),
+                                                      np.flip(ibis_data.iv_pwr_clamp[:, _CORNER_INDEX]))
+        if ng:
+            pwr_clamp_table_str+= f',{pwr_clamp_ref-ibis_data.iv_pwr_clamp[0,0]+0.5} , {ibis_data.iv_pwr_clamp[0, _CORNER_INDEX]}'
+            return_val += f'B1 DIE PWR_CLAMP_REF I = pwl(V(DIE), {pwr_clamp_table_str})\n'
+        else:
+            return_val += f'B1 DIE PWR_CLAMP_REF I = table(V(DIE), {pwr_clamp_table_str})\n'
+
+    if ibis_data.iv_gnd_clamp is not None:
+        return_val += f'V2 GND_CLAMP_REF 0 {gnd_clamp_ref}\n'
+        if not ibis_data.c_comp_gnd_clamp is None:
+            return_val += f'C12 DIE GND_CLAMP_REF {ibis_data.c_comp_gnd_clamp[_INDEX]}\n'
+        gnd_clamp_table_str = convert_iv_table_to_str(ibis_data.iv_gnd_clamp[:, 0] - gnd_clamp_ref,
+                                                      ibis_data.iv_gnd_clamp[:, _CORNER_INDEX])
+        if ng:
+            gnd_clamp_table_str+= f',{ibis_data.iv_gnd_clamp[-1,0]-gnd_clamp_ref+0.5} , {ibis_data.iv_gnd_clamp[-1, _CORNER_INDEX]}'
+            return_val += f'B2 DIE GND_CLAMP_REF I = pwl(V(DIE), {gnd_clamp_table_str})\n'
+        else:
+            return_val += f'B2 DIE GND_CLAMP_REF I = table(V(DIE), {gnd_clamp_table_str})\n\n'
+        
+
+    return return_val
+
+
+def define_pullup_and_pulldown_devices(ibis_data:DataModel, corner:_CORNER, ng=False):
+    """
+    Arbitrary Source definition for pullup and pulldown devices
+    Parameters
+    ----------
+    ibis_data 
+        a DataModel object (defined in data_model.py)
+    corner 
+        "Typical", "WeakSlow" or "FastStrong"
+    ng
+        bool for whether ngspice is the chosen simulator or not
+
+    Returns
+    -------
+        netlist for the arbitrary source for the devices
+    """
+
+    _INDEX = convert_corner_str_to_index(corner)
+    _CORNER_INDEX = _INDEX + 1
+
+    pullup_ref = get_reference(ibis_data.pullup_ref, ibis_data.v_range, _CORNER_INDEX)
+    pulldown_ref = get_reference(ibis_data.pulldown_ref, 0, _CORNER_INDEX)
+
+    return_val = ""
+    # Arbitrary Source definition for pullup and pulldown devices
+    if ibis_data.iv_pullup is not None:
+        return_val += f'V3 PULLUP_REF 0 {pullup_ref}\n'
+        if not ibis_data.c_comp_pullup is None:
+            return_val += f'C13 DIE PULLUP_REF {ibis_data.c_comp_pullup[_INDEX]}'
+        pullup_table_str = convert_iv_table_to_str(np.flip(pullup_ref - ibis_data.iv_pullup[:, 0]),
+                                                   np.flip(ibis_data.iv_pullup[:, _CORNER_INDEX]))
+        if ng:
+            pullup_table_str+= f', {pullup_ref-ibis_data.iv_pullup[0,0]+0.5} , {ibis_data.iv_pullup[0, _CORNER_INDEX]}'
+            return_val += f'B3 DIE PULLUP_REF I={{V(Ku)*pwl(V(DIE), {pullup_table_str})}}\n'
+        else:
+            return_val += f'B3 DIE PULLUP_REF I={{V(Ku)*table(V(DIE), {pullup_table_str})}}\n'
+
+    if ibis_data.iv_pulldown is not None:
+        return_val += f'V4 PULLDOWN_REF 0 {pulldown_ref}\n'
+        if not ibis_data.c_comp_pulldown is None:
+            return_val += f'C14 DIE PULLDOWN_REF {ibis_data.c_comp_pulldown[_INDEX]}'
+        pulldown_table_str = convert_iv_table_to_str(ibis_data.iv_pulldown[:, 0] - pulldown_ref,
+                                                     ibis_data.iv_pulldown[:, _CORNER_INDEX])
+        if ng:
+            pulldown_table_str+= f', {ibis_data.iv_pulldown[-1 ,0]-pulldown_ref+0.5} , {ibis_data.iv_pulldown[-1, _CORNER_INDEX]}'
+            return_val += f'B4 DIE PULLDOWN_REF I={{V(Kd)*pwl(V(DIE), {pulldown_table_str})}})\n'
+        else:
+            return_val += f'B4 DIE PULLDOWN_REF I={{V(Kd)*table(V(DIE), {pulldown_table_str})}}\n\n'
+    return return_val
+
+
+def create_input_model(ibis_data:DataModel, corner:_CORNER, ng=False) -> str:
+    """
+    Creates a SPICE generic subcircuit model.
+    Generic models are simple and only supports a single oscillation pulse with a given frequency
+
+    Parameters
+    ----------
+    ibis_data 
+        a DataModel object (defined in data_model.py)
+    corner 
+        "Typical", "WeakSlow" or "FastStrong"
+    io_type 
+        "Input" or "Output"
+
+    Returns
+    -------
+        spice string of generated input model 
+    """
+    try:
+        spice_str = ''
+        spice_str+=spice_header_info(ibis_data, corner)
+
+        spice_str+=f'.SUBCKT {ibis_data.model_name}_Input_{corner} IN\n\n'
+
+        rlc_netlist = spice_rlc_netlist(ibis_data, corner, pin_name="IN")
+        spice_str+=rlc_netlist
+
+        clamps_netlist = define_pwr_and_gnd_clamps(ibis_data, corner, ng)
+        spice_str+=clamps_netlist
+
+        spice_str+=f'.ENDS\n'
+    except Exception as e:
+        raise e
+    return spice_str
+
+def create_generic_output_model(
+        ibis_data:DataModel, corner:_CORNER, 
+        truncation:float, stimulus: Optional[_STIMULUS] = None
+        ) -> str:
+    """
+    Creates a SPICE generic subcircuit model.
+    Generic models are simple and only supports a single oscillation pulse with a given frequency
+
+    Parameters
+    ----------
+    ibis_data 
+        a DataModel object (defined in data_model.py)
+    corner 
+        "Typical", "WeakSlow" or "FastStrong"
+    truncation
+        truncation proportion between 0 and 1 for amplitude windowing
+    stimulus 
+        stimulus type as defined in _STIMULUS
+
+    Returns
+    -------
+        spice string for writing to file or direct input into SPICE
+    """
+    try:
+        _INDEX = convert_corner_str_to_index(corner)
+        _CORNER_INDEX = _INDEX + 1
+
+        spice_str = ''
+
+        if ibis_data.model_type.lower() == "open_drain":
+            kr = solve_k_params_output_open_drain(ibis_data, corner=_CORNER_INDEX, waveform_type="Rising", truncation=truncation)
+            kf = solve_k_params_output_open_drain(ibis_data, corner=_CORNER_INDEX, waveform_type="Falling", truncation=truncation)
+        else:
+            kr = solve_k_params_output(ibis_data, corner=_CORNER_INDEX, waveform_type="Rising", truncation=truncation)
+            kf = solve_k_params_output(ibis_data, corner=_CORNER_INDEX, waveform_type="Falling", truncation=truncation)
+
+        kr = compress_param(kr)
+        kf = compress_param(kf)
+
+        header = spice_header_info(ibis_data, corner)
+        spice_str+=(header)
+
+        spice_str+=f'.SUBCKT {ibis_data.model_name}-Output-{corner} OUT params: freq=10Meg duty=0.5\n\n'
+
+        rlc_netlist = spice_rlc_netlist(ibis_data, corner, pin_name="OUT")
+        spice_str+=rlc_netlist
+
+        clamps_netlist = define_pwr_and_gnd_clamps(ibis_data, corner)
+        spice_str+=clamps_netlist
+
+        device_netlist = define_pullup_and_pulldown_devices(ibis_data, corner)
+        spice_str+=device_netlist
+        
+        (offset_neg_r, offset_pos_r) = determine_crossover_offsets(kr)
+        (offset_neg_f, offset_pos_f) = determine_crossover_offsets(kf)
+
+        spice_str+=f'* Define Oscillation Sources\n'
+        spice_str+=f'.param calc_gap_pos = {{(duty/freq) - {offset_pos_r} - {offset_neg_f}}}\n'
+        spice_str+=f'.param calc_gap_neg = {{((1-duty)/freq) - {offset_pos_f} - {offset_neg_r}}}\n\n'
+
+        spice_str+=f'.param GAP_POS = {{if(calc_gap_pos <= 0, 0.1e-12, calc_gap_pos)}}\n'
+        spice_str+=f'.param GAP_NEG = {{if(calc_gap_neg <= 0, 0.1e-12, calc_gap_neg)}}\n\n'
+
+        # Calculations to define the oscillation stimulus
+        if ibis_data.model_type.lower() == "open_drain":
+            k_d_osc_str = create_osc_waveform_pwl(kr[:, _TIME], kr[:, _KD_OD], kf[:, _TIME], kf[:, _KD_OD])
+        else:
+            k_u_osc_str = create_osc_waveform_pwl(kr[:, _TIME], kr[:, _KU], kf[:, _TIME], kf[:, _KU])
+            k_d_osc_str = create_osc_waveform_pwl(kr[:, _TIME], kr[:, _KD], kf[:, _TIME], kf[:, _KD])
+            spice_str+=f'V5 Ku 0 PWL({k_u_osc_str})\n\n'   
+
+        spice_str+=f'V6 Kd 0 PWL({k_d_osc_str})\n\n'
+
+        spice_str+=f'.ENDS\n'
+
+    except Exception as e:
+        # TODO: need to add specific error handling here but as temporary implementation 
+        raise e
+
+    return spice_str
+
+
+def ltspice_stimulus_netlist_setup(stimulus:Optional[_STIMULUS])->str:
+    """
+    Returns a netlist string that sets up the LTSpice stimulus sources for the model
+    """
+    setup_str = ".model SW SW(Ron=1n Roff=1G Vt=.5 Vh=-.4)\n\n"
+    if not stimulus == 'ALL' and not stimulus == 'TRIG':
+        setup_str += f"V10 {stimulus} 0 1\n"
+        setup_str += f"S1 Ku K_U_{stimulus} {stimulus} 0 SW\n"
+        setup_str += f"S7 Kd K_D_{stimulus} {stimulus} 0 SW\n"
+        return setup_str
+    elif stimulus == 'TRIG':  
+        setup_str += '.model SW_INV SW(Ron=1G Roff=1n Vt=.5 Vh=-.4)\n\n'
+        setup_str += 'S1 Ku K_U_RISE TRIG 0 SW\n'
+        setup_str += 'S2 Ku K_U_FALL TRIG 0 SW_INV\n'
+        setup_str += 'S3 Kd K_D_RISE TRIG 0 SW\n'
+        setup_str += 'S4 Kd K_D_FALL TRIG 0 SW_INV\n'
+        return setup_str
+    else:
+        # Setup the Stimulus setting options for the Pullup Waveform (Ku)
+        setup_str = ".model SW SW(Ron=1n Roff=1G Vt=.5 Vh=-.4)\n\n"
+        setup_str += "\n* Setup the Stimulus setting options for the Pullup Waveform (Ku)\n"
+        setup_str += "V10 OSC 0 {if(stimulus_==1, 1, 0)}\n"
+        setup_str += "V11 OSC_INV 0 {if(stimulus_==2, 1, 0)}\n"
+        setup_str += "V12 RISE 0 {if(stimulus_==3, 1, 0)}\n"
+        setup_str += "V13 FALL 0 {if(stimulus_==4, 1, 0)}\n"
+        setup_str += "V14 HIGH 0 {if(stimulus_==5, 1, 0)}\n"
+        setup_str += "V15 LOW 0 {if(stimulus_==6, 1, 0)}\n"
+        setup_str += "S1 Ku K_U_OSC OSC 0 SW\n"
+        setup_str += "S2 Ku K_U_OSC_INV OSC_INV 0 SW\n"
+        setup_str += "S3 Ku K_U_RISE RISE 0 SW\n"
+        setup_str += "S4 Ku K_U_FALL FALL 0 SW\n"
+        setup_str += "S5 Ku K_U_HIGH HIGH 0 SW\n"
+        setup_str += "S6 Ku K_U_LOW LOW 0 SW\n"
+
+        # Setup the Stimulus setting options for the Pulldown Waveform (Kd)
+        setup_str += "\n* Setup the Stimulus setting options for the Pulldown Waveform (Kd)\n"
+        setup_str += "S7 Kd K_D_OSC OSC 0 SW\n"
+        setup_str += "S8 Kd K_D_OSC_INV OSC_INV 0 SW\n"
+        setup_str += "S9 Kd K_D_RISE RISE 0 SW\n"
+        setup_str += "S10 Kd K_D_FALL FALL 0 SW\n"
+        setup_str += "S11 Kd K_D_HIGH HIGH 0 SW\n"
+        setup_str += "S12 Kd K_D_LOW LOW 0 SW\n"
+    return setup_str
+
+
+def create_ltspice_output_model(
+        ibis_data:DataModel, corner:_CORNER, 
+        truncation:float, stimulus: Optional[_STIMULUS] = None
+        ) -> str:
+    """
+    Creates a SPICE subcircuit model designed for LTSpice.
+    LTSpice specific models provide extra functionality to manipulate the waveform stimulus of the output
+
+    Parameters
+    ----------
+    ibis_data 
+        a DataModel object (defined in data_model.py)
+    corner 
+        "Typical", "WeakSlow" or "FastStrong"
+    truncation
+        truncation proportion between 0 and 1
+    stimulus 
+        stimulus type as defined in _STIMULUS
+
+    Returns
+    -------
+        spice string for input into spice netlist or to be written to a file
+    """
+
+    try:
+        _INDEX = convert_corner_str_to_index(corner)
+        _CORNER_INDEX = _INDEX + 1
+        open_drain = ibis_data.model_type.lower() == "open_drain"
+
+        spice_str = ''
+
+        if open_drain:
+            kr = solve_k_params_output_open_drain(ibis_data, corner=_CORNER_INDEX, waveform_type="Rising", truncation=truncation)
+            kf = solve_k_params_output_open_drain(ibis_data, corner=_CORNER_INDEX, waveform_type="Falling", truncation=truncation)
+        else:
+            kr = solve_k_params_output(ibis_data, corner=_CORNER_INDEX, waveform_type="Rising", truncation=truncation)
+            kf = solve_k_params_output(ibis_data, corner=_CORNER_INDEX, waveform_type="Falling", truncation=truncation)
+
+        kr = compress_param(kr)
+        kf = compress_param(kf)
+
+        parameter_info = "* Note: This model may only work in LTSpice.\n"
+        parameter_info += "* Stimulus Options: \n" \
+                            "*\t1 - Oscillate at given freq and duty\n" \
+                            "*\t2 - Inverted Oscillate at given freq and duty\n" \
+                            "*\t3 - Rising Edge with delay\n" \
+                            "*\t4 - Falling Edge with delay\n" \
+                            "*\t5 - Stuck High\n" \
+                            "*\t6 - Stuck Low\n" \
+                            "*\t7 - HighZ (if 3-State output)\n\n"
+        spice_str += spice_header_info(ibis_data, corner, extra_info=parameter_info)
+
+        spice_str += spice_subckt_line(ibis_data, corner, stimulus, 'LTSpice')
+
+        rlc_netlist = spice_rlc_netlist(ibis_data, corner, pin_name="OUT")
+        spice_str+=rlc_netlist
+
+        clamps_netlist = define_pwr_and_gnd_clamps(ibis_data, corner)
+        spice_str+=clamps_netlist
+
+        device_netlist = define_pullup_and_pulldown_devices(ibis_data, corner)
+        spice_str+=device_netlist
+
+        stimulus_netlist = ltspice_stimulus_netlist_setup(stimulus)
+        spice_str+=stimulus_netlist
+
+        (offset_neg_r, offset_pos_r) = determine_crossover_offsets(kr)
+        (offset_neg_f, offset_pos_f) = determine_crossover_offsets(kf)
+
+
+        # Calculations for defining the frequency and duty cycle of the oscillation stimuli'
+        if stimulus in ['OSC', 'OSC_INV', 'RAND', 'RAND_INV', 'ALL']:
+            spice_str+=f'\n* Define Oscillation Sources\n'
+            spice_str+=f'.param calc_gap_pos = {{(duty/freq) - {offset_pos_r} - {offset_neg_f}}}\n'
+            spice_str+=f'.param calc_gap_neg = {{((1-duty)/freq) - {offset_pos_f} - {offset_neg_r}}}\n\n'
+            spice_str+=f'.param GAP_POS = {{if(calc_gap_pos <= 0, 0.1e-12, calc_gap_pos)}}\n'
+            spice_str+=f'.param GAP_NEG = {{if(calc_gap_neg <= 0, 0.1e-12, calc_gap_neg)}}\n\n'
+
+        if stimulus in ['RAND', 'RAND_INV', 'ALL']:
+            spice_str+=f'\n* Define Period Duration for Bitstream\n'
+            spice_str+=f'.param t_period = {{(1/freq)}}\n'
+
+        if stimulus == 'ALL':
+            max_stimulus = 8
+            if ibis_data.model_type.lower() == "3-state":
+                max_stimulus = 9
+
+            # Limit the stimulus between 1 and max stimulus
+            spice_str+=f'.param stimulus_ = {{if(stimulus < 1, 1, if(stimulus > {max_stimulus}, {max_stimulus}, stimulus)}}\n\n'
+
+        if stimulus in ['ALL', 'OSC']:
+            # Oscillation Strings
+            ku_osc_str, kd_osc_str = create_pwl_strings(create_osc_waveform_pwl, kr, kf, open_drain, ng=False)
+            if not open_drain:
+                spice_str+=f"V16 K_U_OSC 0 PWL REPEAT FOREVER ({ku_osc_str}) ENDREPEAT\n"
+            spice_str+=f"V36 K_D_OSC 0 PWL REPEAT FOREVER ({kd_osc_str}) ENDREPEAT\n"
+
+        if stimulus in ['ALL', 'HIGH']:
+            spice_str+=f"V17 K_U_HIGH 0 1\n"
+            spice_str+=f"V18 K_U_LOW 0 0\n"
+            spice_str+=f"V37 K_D_HIGH 0 1\n"
+            spice_str+=f"V38 K_D_LOW 0 0\n"
+
+        if stimulus in ['ALL', 'LOW']:
+            spice_str+=f"V17 K_U_HIGH 0 0\n"
+            spice_str+=f"V18 K_U_LOW 0 1\n"
+            spice_str+=f"V37 K_D_HIGH 0 0\n"
+            spice_str+=f"V38 K_D_LOW 0 1\n"
+
+        if stimulus in ['ALL', 'OSC_INV']:
+            ku_inv_osc_str, kd_inv_osc_str = create_pwl_strings(create_osc_waveform_pwl, kf, kr, open_drain, ng=False)
+            if not open_drain:
+                spice_str+=f"V19 K_U_OSC_INV 0 PWL REPEAT FOREVER ({ku_inv_osc_str}) ENDREPEAT\n"
+            spice_str+=f"V39 K_D_OSC_INV 0 PWL REPEAT FOREVER ({kd_inv_osc_str}) ENDREPEAT\n"
+
+        if stimulus in ['ALL', 'RISE', 'TRIG']:
+            # Rising Edge Strings
+            if open_drain:
+                kdr_str = create_edge_waveform_pwl(kr[:, _TIME], kr[:, _KD_OD])
+            else:
+                kdr_str = create_edge_waveform_pwl(kr[:, _TIME], kr[:, _KD])
+                kur_str = create_edge_waveform_pwl(kr[:, _TIME], kr[:, _KU])
+                spice_str+=f"V20 K_U_RISE 0 PWL({kur_str})\n"
+            spice_str+=f"V40 K_D_RISE 0 PWL({kdr_str})\n"
+                
+        if stimulus in ['ALL', 'FALL', 'TRIG']:
+            # Falling Edge Strings
+            if open_drain:
+                kdf_str = create_edge_waveform_pwl(kf[:, _TIME], kf[:, _KD_OD])
+            else:
+                kdf_str = create_edge_waveform_pwl(kf[:, _TIME], kf[:, _KD])
+                kuf_str = create_edge_waveform_pwl(kf[:, _TIME], kf[:, _KU])
+                spice_str+=f"V21 K_U_FALL 0 PWL({kuf_str})\n"
+            spice_str+=f"V41 K_D_FALL 0 PWL({kdf_str})\n"
+
+        bitstream = [random.randint(0, 1) for _ in range(127)]
+        inv_bitstream = [int(not bit) for bit in bitstream]
+        if stimulus in ['ALL', 'RAND']:
+            # Pseudorandom Strings
+            ku_rand_str, kd_rand_str = create_pwl_strings(create_arb_bitstream_pwl, kf, kr, open_drain, bitstream=bitstream, ng=False)
+            if not open_drain:
+                spice_str+=f"V51 K_U_RAND 0 PWL REPEAT FOREVER ({ku_rand_str}) ENDREPEAT\n"
+            spice_str+=f"V53 K_D_RAND 0 PWL REPEAT FOREVER ({kd_rand_str}) ENDREPEAT\n"
+        if stimulus in ['ALL', 'RAND_INV']:
+            ku_inv_rand_str, kd_inv_rand_str = create_pwl_strings(create_arb_bitstream_pwl, kf, kr, open_drain, bitstream=inv_bitstream, ng=False)
+            if not open_drain:
+                spice_str+=f"V52 K_U_RAND_INV 0 PWL REPEAT FOREVER ({ku_inv_rand_str}) ENDREPEAT\n"
+            spice_str+=f"V54 K_D_RAND_INV 0 PWL REPEAT FOREVER ({kd_inv_rand_str}) ENDREPEAT\n"
+
+            if ibis_data.model_type.lower() == "3-state":
+                spice_str+="V50 EN 0 {if(stimulus==9, 1, 0)}\n"
+                spice_str+="S13 Ku 0 EN 0 SW\n"
+                spice_str+="S14 Kd 0 EN 0 SW\n"
+
+        spice_str+=f'\n.ENDS\n'
+    except Exception as e:
+        raise e
+
+    return spice_str
+
+def create_ltspice_symbol(
+        ibis_data:DataModel, corner:_CORNER, model_path:str, 
+        io_type:_IO_TYPE, stimulus: Optional[_STIMULUS] = None
+        ) -> str:
+    """
+    Creates an LTSpice symbol for the given model_path within the model_path directory
+    This helps with the relative referencing of the model_path within the symbol file.
+    The symbol is given the same name as the model for consistency.
+
+    Parameters
+    ----------
+    ibis_data 
+        a DataModel object (defined in data_model.py)
+    corner 
+        "Typical", "WeakSlow" or "FastStrong"
+    model_path 
+        filepath of the subcircuit model
+    io_type 
+        "Input" or "Output"
+
+    Returns
+    -------
+        filepath of the created symbol
+    """
+    if io_type =='Input':
+        symbol_value = f'{ibis_data.model_name}_{io_type}_{corner}'
+    else:
+        symbol_value = f'{ibis_data.model_name}_{io_type}_{corner}_{stimulus}' if not stimulus is None else f'{ibis_data.model_name}_{io_type}_{corner}'
+    symbol_path = os.path.join(os.path.dirname(model_path), f'{symbol_value}.asy')
+    model_filename = os.path.basename(model_path)
+
+    with open(symbol_path, 'w') as file:
+        if io_type == "Input":
+            file.write(f"Version 4\n")
+            file.write(f"SymbolType BLOCK\n")
+            file.write(f"LINE Normal 0 32 48 64\n")
+            file.write(f"LINE Normal 0 96 48 64\n")
+            file.write(f"LINE Normal 0 96 0 32\n")
+            file.write(f"WINDOW 0 8 16 Left 2\n")
+            file.write(f"WINDOW 3 8 120 Left 2\n")
+            file.write(f"SYMATTR Value {symbol_value}\n")
+            file.write(f"SYMATTR Prefix X\n")
+            file.write(f"SYMATTR ModelFile {model_filename}\n")
+            file.write(f"PIN 0 64 NONE 0\n")
+            file.write(f"PINATTR PinName IN\n")
+            file.write(f"PINATTR SpiceOrder 1\n")
+
+        if io_type == "Output":
+            file.write(f"Version 4\n")
+            file.write(f"SymbolType BLOCK\n")
+            file.write(f"LINE Normal -16 0 32 -32\n")
+            file.write(f"LINE Normal -16 -64 -16 0\n")
+            file.write(f"LINE Normal 32 -32 -16 -64\n")
+            file.write(f"WINDOW 0 0 -80 Bottom 2\n")
+            file.write(f"WINDOW 3 8 24 Top 2\n")
+            file.write(f"WINDOW 39 8 48 Top 2\n")
+            file.write(f"SYMATTR Value {symbol_value}\n")
+            if stimulus != 'TRIG':
+                file.write(f"SYMATTR SpiceLine stimulus=1 freq=10Meg duty=0.5 delay=0\n")
+            file.write(f"SYMATTR Prefix X\n")
+            file.write(f"SYMATTR ModelFile {model_filename}\n")
+            file.write(f"PIN 32 -32 NONE 8\n")
+            file.write(f"PINATTR PinName OUT\n")
+            file.write(f"PINATTR SpiceOrder 1\n")
+            if stimulus == 'TRIG':
+                file.write(f"LINE Normal 0 -10 0 0\n")
+                file.write(f"PIN 0 0 NONE 8\n")
+                file.write(f"PINATTR PinName TRIG\n")
+                file.write(f"PINATTR SpiceOrder 2\n")
+
+    return symbol_path
+
+def ngspice_stimulus_netlist_setup(stimulus: Optional[_STIMULUS]) -> str:
+    """
+    Returns a netlist string that sets up the ngSPICE stimulus sources for the model
+    """
+    setup_str = ".model SW SW(Ron=1n Roff=1G Vt=.5 Vh=-.4)\n\n"
+    if not stimulus == 'ALL' and not stimulus == 'TRIG':
+        setup_str += f"V10 {stimulus} 0 1\n"
+        setup_str += f"S1 Ku K_U_{stimulus} {stimulus} 0 SW\n"
+        setup_str += f"S7 Kd K_D_{stimulus} {stimulus} 0 SW\n"
+        return setup_str
+    elif stimulus == 'TRIG':  
+        setup_str += '.model SW_INV SW(Ron=1G Roff=1n Vt=.5 Vh=-.4)\n\n'
+        setup_str += 'S1 Ku K_U_RISE TRIG 0 SW\n'
+        setup_str += 'S2 Ku K_U_FALL TRIG 0 SW_INV\n'
+        setup_str += 'S3 Kd K_D_RISE TRIG 0 SW\n'
+        setup_str += 'S4 Kd K_D_FALL TRIG 0 SW_INV\n'
+        return setup_str
+    else:
+        # Setup the Stimulus setting options for the Pullup Waveform (Ku)
+        setup_str = ".model SW SW(Ron=1n Roff=1G Vt=.5 Vh=-.4)\n\n"
+        setup_str += "\n* Setup the Stimulus setting options for the Pullup Waveform (Ku)\n"
+        setup_str += ".if (stimulus_==1)\n"
+        setup_str += "V10 OSC 0 1\n"
+        setup_str += ".else\n"
+        setup_str += "V10 OSC 0 0\n"
+        setup_str += ".endif\n"
+        setup_str += ".if (stimulus_==2)\n"
+        setup_str += "V11 OSC_INV 0 1\n"
+        setup_str += ".else\n"
+        setup_str += "V11 OSC_INV 0 0\n"
+        setup_str += ".endif\n"
+        setup_str += ".if (stimulus_==3)\n"
+        setup_str += "V12 RISE 0 1\n"
+        setup_str += ".else\n"
+        setup_str += "V12 RISE 0 0\n"
+        setup_str += ".endif\n"
+        setup_str += ".if (stimulus_==4)\n"
+        setup_str += "V13 FALL 0 1\n"
+        setup_str += ".else\n"
+        setup_str += "V13 FALL 0 0\n"
+        setup_str += ".endif\n"
+        setup_str += ".if (stimulus_==5)\n"
+        setup_str += "V14 HIGH 0 1\n"
+        setup_str += ".else\n"
+        setup_str += "V14 HIGH 0 0\n"
+        setup_str += ".endif\n"
+        setup_str += ".if (stimulus_==6)\n"
+        setup_str += "V15 LOW 0 1\n"
+        setup_str += ".else\n"
+        setup_str += "V15 LOW 0 0\n"
+        setup_str += ".endif\n"
+        setup_str += ".if (stimulus_==7)\n"
+        setup_str += "V61 RAND 0 1\n"
+        setup_str += ".else\n"
+        setup_str += "V61 RAND 0 0\n"
+        setup_str += ".endif\n"
+        setup_str += ".if (stimulus_==8)\n"
+        setup_str += "V62 RAND_INV 0 1\n"
+        setup_str += ".else\n"
+        setup_str += "V62 RAND_INV 0 0\n"
+        setup_str += ".endif\n"
+
+        setup_str += "S1 Ku K_U_OSC OSC 0 SW\n"
+        setup_str += "S2 Ku K_U_OSC_INV OSC_INV 0 SW\n"
+        setup_str += "S3 Ku K_U_RISE RISE 0 SW\n"
+        setup_str += "S4 Ku K_U_FALL FALL 0 SW\n"
+        setup_str += "S5 Ku K_U_HIGH HIGH 0 SW\n"
+        setup_str += "S6 Ku K_U_LOW LOW 0 SW\n"
+        setup_str += "S20 Ku K_U_RAND RAND 0 SW\n"
+        setup_str += "S21 Ku K_U_RAND_INV RAND_INV 0 SW\n"
+
+        # Setup the Stimulus setting options for the Pulldown Waveform (Kd)
+        setup_str += "\n* Setup the Stimulus setting options for the Pulldown Waveform (Kd)\n"
+        setup_str += "S7 Kd K_D_OSC OSC 0 SW\n"
+        setup_str += "S8 Kd K_D_OSC_INV OSC_INV 0 SW\n"
+        setup_str += "S9 Kd K_D_RISE RISE 0 SW\n"
+        setup_str += "S10 Kd K_D_FALL FALL 0 SW\n"
+        setup_str += "S11 Kd K_D_HIGH HIGH 0 SW\n"
+        setup_str += "S12 Kd K_D_LOW LOW 0 SW\n"
+        setup_str += "S22 Kd K_D_RAND RAND 0 SW\n"
+        setup_str += "S23 Kd K_D_RAND_INV RAND_INV 0 SW\n"
+    return setup_str
+
+def create_ngspice_output_model(
+        ibis_data:DataModel, corner:_CORNER,
+        truncation:float, stimulus: Optional[_STIMULUS] = None
+        ) -> str:
+    """
+    Creates a SPICE subcircuit model designed for ngSPICE.
+    ngSPICE specific models provide extra functionality to manipulate the waveform stimulus of the output
+
+    Parameters
+    ----------
+    ibis_data 
+        a DataModel object (defined in data_model.py)
+    corner 
+        "Typical", "WeakSlow" or "FastStrong"
+    truncation 
+        percentage in integer form for truncation tolerance
+    stimulus 
+        stimulus type 
+
+    Returns
+    -------
+        created spice string
+    """
+
+    try:
+        _INDEX = convert_corner_str_to_index(corner)
+        _CORNER_INDEX = _INDEX + 1
+
+        open_drain = ibis_data.model_type.lower() == "open_drain"
+        spice_str = ''
+
+        if open_drain:
+            kr = solve_k_params_output_open_drain(ibis_data, corner=_CORNER_INDEX, waveform_type="Rising", truncation=truncation)
+            kf = solve_k_params_output_open_drain(ibis_data, corner=_CORNER_INDEX, waveform_type="Falling", truncation=truncation)
+        else:
+            kr = solve_k_params_output(ibis_data, corner=_CORNER_INDEX, waveform_type="Rising", truncation=truncation)
+            kf = solve_k_params_output(ibis_data, corner=_CORNER_INDEX, waveform_type="Falling", truncation=truncation)
+
+        kr = compress_param(kr)
+        kf = compress_param(kf)
+
+        parameter_info = "* Note: This model may only work in ngSPICE.\n"
+        if stimulus =='ALL':
+            parameter_info += "* Stimulus Options: \n" \
+                                "*\t1 - Oscillate at given freq and duty\n" \
+                                "*\t2 - Inverted Oscillate at given freq and duty\n" \
+                                "*\t3 - Rising Edge with delay\n" \
+                                "*\t4 - Falling Edge with delay\n" \
+                                "*\t5 - Stuck High\n" \
+                                "*\t6 - Stuck Low\n" \
+                                "*\t7 - Pseudorandom Bitstream\n" \
+                                "*\t8 - Inverted Pseudorandom Bitstream\n" \
+                                "*\t9 - HighZ (if 3-State output)\n\n"
+        spice_str+=spice_header_info(ibis_data, corner, extra_info=parameter_info)
+
+        spice_str += spice_subckt_line(ibis_data, corner, stimulus, 'ngSPICE')
+
+        rlc_netlist = spice_rlc_netlist(ibis_data, corner, pin_name="OUT")
+        spice_str += rlc_netlist
+
+        clamps_netlist = define_pwr_and_gnd_clamps(ibis_data, corner, ng=True)
+        spice_str += clamps_netlist
+
+        device_netlist = define_pullup_and_pulldown_devices(ibis_data, corner, ng=True)
+        spice_str += device_netlist
+
+        stimulus_netlist = ngspice_stimulus_netlist_setup(stimulus=stimulus) # Look at this in more detail
+ 
+        spice_str += stimulus_netlist
+
+        (offset_neg_r, offset_pos_r) = determine_crossover_offsets(kr)
+        (offset_neg_f, offset_pos_f) = determine_crossover_offsets(kf)
+
+        # Calculations for defining the frequency and duty cycle of the oscillation stimuli'
+        if stimulus in ['OSC', 'OSC_INV', 'RAND', 'RAND_INV', 'ALL']:
+            spice_str+=f'\n* Define Oscillation Sources\n'
+            spice_str+=f'.param calc_gap_pos = {{(duty/freq) - {offset_pos_r} - {offset_neg_f}}}\n'
+            spice_str+=f'.param calc_gap_neg = {{((1-duty)/freq) - {offset_pos_f} - {offset_neg_r}}}\n\n'
+            spice_str+=f'.if (calc_gap_pos<=0)\n'
+            spice_str+=f'.param GAP_POS = 0.1e-12\n'
+            spice_str+='.else\n'
+            spice_str+='.param GAP_POS = calc_gap_pos\n'
+            spice_str+='.endif\n\n'
+            spice_str+=f'.if (calc_gap_neg<=0)\n'
+            spice_str+=f'.param GAP_NEG = 0.1e-12\n'
+            spice_str+='.else\n'
+            spice_str+='.param GAP_NEG = calc_gap_neg\n'
+            spice_str+='.endif\n\n'
+
+        if stimulus in ['RAND', 'RAND_INV', 'ALL']:
+            spice_str+=f'\n* Define Period Duration for Bitstream\n'
+            spice_str+=f'.param t_period = {{(1/freq)}}\n'
+
+        max_stimulus = 8
+        if ibis_data.model_type.lower() == "3-state":
+            max_stimulus = 9
+
+        if stimulus == 'ALL':
+            # Limit the stimulus between 1 and max stimulus
+            spice_str+=f'.if (stimulus < 1)\n'
+            spice_str+=f'.param stimulus_ =  1\n'
+            spice_str+=f'.elseif (stimulus > {max_stimulus})\n'
+            spice_str+=f'.param stimulus_ =  {max_stimulus}\n'
+            spice_str+='.else\n'
+            spice_str+=f'.param stimulus_ = stimulus\n\n'
+            spice_str+='.endif\n\n'
+
+        if stimulus in ['ALL', 'OSC']:
+        # Oscillation Strings
+            ku_osc_str, kd_osc_str = create_pwl_strings(create_osc_waveform_pwl, kr, kf, open_drain)
+            if not open_drain:
+                spice_str+=f"V16 K_U_OSC 0 PWL({ku_osc_str}) r=0 td={{delay}}\n"
+            spice_str+=f"V36 K_D_OSC 0 PWL({kd_osc_str}) r=0 td={{delay}}\n"
+        
+        if stimulus in ['ALL', 'HIGH']:
+            spice_str+=f"V17 K_U_HIGH 0 1\n"
+            spice_str+=f"V18 K_U_LOW 0 0\n"
+            spice_str+=f"V37 K_D_HIGH 0 1\n"
+            spice_str+=f"V38 K_D_LOW 0 0\n"
+
+        if stimulus in ['ALL', 'LOW']:
+            spice_str+=f"V17 K_U_HIGH 0 0\n"
+            spice_str+=f"V18 K_U_LOW 0 1\n"
+            spice_str+=f"V37 K_D_HIGH 0 0\n"
+            spice_str+=f"V38 K_D_LOW 0 1\n"
+
+        if stimulus in ['ALL', 'OSC_INV']:
+            ku_inv_osc_str, kd_inv_osc_str = create_pwl_strings(create_osc_waveform_pwl, kf, kr, open_drain)
+            if not open_drain:
+                spice_str+=f"V19 K_U_OSC_INV 0 PWL({ku_inv_osc_str}) r=0 td={{delay}}\n"
+            spice_str+=f"V39 K_D_OSC_INV 0 PWL({kd_inv_osc_str}) r=0 td={{delay}}\n"
+
+        if stimulus in ['ALL', 'RISE', 'TRIG']:
+            # Rising Edge Strings
+            if open_drain:
+                kdr_str = create_edge_waveform_pwl(kr[:, _TIME], kr[:, _KD_OD])
+            else:
+                kdr_str = create_edge_waveform_pwl(kr[:, _TIME], kr[:, _KD])
+                kur_str = create_edge_waveform_pwl(kr[:, _TIME], kr[:, _KU])
+                spice_str+=f"V20 K_U_RISE 0 PWL({kur_str}) td={{delay}}\n"
+            spice_str+=f"V40 K_D_RISE 0 PWL({kdr_str}) td={{delay}}\n"
+                
+        if stimulus in ['ALL', 'FALL', 'TRIG']:
+            # Falling Edge Strings
+            if open_drain:
+                kdf_str = create_edge_waveform_pwl(kf[:, _TIME], kf[:, _KD_OD])
+            else:
+                kdf_str = create_edge_waveform_pwl(kf[:, _TIME], kf[:, _KD])
+                kuf_str = create_edge_waveform_pwl(kf[:, _TIME], kf[:, _KU])
+                spice_str+=f"V21 K_U_FALL 0 PWL({kuf_str}) td={{delay}}\n"
+            spice_str+=f"V41 K_D_FALL 0 PWL({kdf_str}) td={{delay}}\n"
+
+        bitstream = [random.randint(0, 1) for _ in range(127)]
+        inv_bitstream = [int(not bit) for bit in bitstream]
+        if stimulus in ['ALL', 'RAND']:
+            # Pseudorandom Strings
+            ku_rand_str, kd_rand_str = create_pwl_strings(create_arb_bitstream_pwl, kf, kr, open_drain, bitstream=bitstream)
+            if not open_drain:
+                spice_str+=f"V51 K_U_RAND 0 PWL({ku_rand_str}) r=0  td={{delay}}\n"
+            spice_str+=f"V53 K_D_RAND 0 PWL({kd_rand_str}) r=0  td={{delay}}\n"
+        if stimulus in ['ALL', 'RAND_INV']:
+            ku_inv_rand_str, kd_inv_rand_str = create_pwl_strings(create_arb_bitstream_pwl, kf, kr, open_drain, bitstream=inv_bitstream)
+            if not open_drain:
+                spice_str+=f"V52 K_U_RAND_INV 0 PWL({ku_inv_rand_str}) r=0  td={{delay}}\n"
+            spice_str+=f"V54 K_D_RAND_INV 0 PWL({kd_inv_rand_str}) r=0  td={{delay}}\n"
+
+        if ibis_data.model_type.lower() == "3-state":
+            spice_str+=".if(stimulus==9)\n"
+            spice_str+="V50 EN 0 1\n"
+            spice_str+=".else\n"
+            spice_str+="V50 EN 0 0\n"
+            spice_str+=".endif\n"
+            spice_str+="S13 Ku 0 EN 0 SW\n"
+            spice_str+="S14 Kd 0 EN 0 SW\n"
+
+        spice_str+=f'\n.ENDS\n'
+    except Exception as e:
+        raise e
+
+    return spice_str
+
+def convert_iv_table_to_str(voltage:NDArray, current:NDArray) -> str:
+    """ 
+    Creates the IV table of values for the current sources modelling the devices and clamps
+
+    Parameters
+    ----------
+    voltage 
+        numpy voltage array
+    current 
+        corresponding numpy current array
+
+    Returns
+    -------
+        the string that goes into subcircuit table
+    """
+    str_val = f'{voltage[0]}, {current[0]}'
+    for i in range(1, len(voltage)):
+        str_val = str_val + f', {voltage[i]}, {current[i]}'
+    return str_val
+
+
+def create_edge_waveform_pwl(time:NDArray, k_param:NDArray) -> str:
+    """
+    Creates the PWL value string for the edge waveform
+
+    Parameters
+    ----------
+    time 
+        numpy time array for k parameter waveform
+    k_param 
+        numpy array for k_r or k_f waveform
+
+    Returns
+    -------
+        the string that goes into PWL source for the edge
+    """
+    str_val = f'0, {k_param[0]}'
+    for i in range(1, len(time)):
+        str_val = str_val + f', {{{time[i]}}}, {k_param[i]}'
+    return str_val
+
+
+def create_osc_waveform_pwl(
+        t1:NDArray, k1:NDArray, 
+        t2:NDArray, k2:NDArray, 
+        ng:bool=False, *args, **kwargs
+        ):
+    """
+    Creates the PWL value string for the oscillation waveform
+
+    Parameters
+    ----------
+    t1 
+        numpy time array for first edge
+    t2 
+        numpy time array for second edge
+    k1 
+        numpy ku or kd array for first edge
+    k2 
+        numpy ku or kd array for second edge
+
+    Returns
+    -------
+        the string that goes into the oscillator PWL source
+    """
+    def _create_ngspice_osc_waveform_pwl(t1, k1, t2, k2):
+        if t1[0] != 0:
+            str_val = f'0 {k1[0]}'
+        else:
+            str_val = ''
+
+        for t, k in zip(t1, k1):
+            str_val = str_val + f' {t} {k}'
+
+        for t, k in zip(t2, k2):
+            str_val = str_val + f' {{{t1[-1]}+{t}+GAP_POS}} {k}'
+
+        str_val = str_val + f' {{{t1[-1]}+{t2[-1]}+GAP_POS+GAP_NEG}} {k2[-1]}'
+        return str_val
+    
+    if ng:
+        return _create_ngspice_osc_waveform_pwl(t1, k1, t2, k2)
+
+    # First Edge
+    # the +0.01p fudge is for Simetrix as it seems to have a bug in its PWLS source
+    # where it cannot start at any value other than 0 regardless of the k_r[0] value
+    
+    str_val = f'0 {k1[0]} +0.01e-12 {k1[0]}'
+    for i in range(1, len(t1)):
+        dt = t1[i] - t1[i - 1]
+        str_val = str_val + f' +{dt} {k1[i]}'
+
+    str_val = str_val + f' +{{GAP_POS}} {k1[-1]} +{t2[0]} {k2[0]}'
+
+    # Second Edge
+    for i in range(1, len(t2)):
+        dt = t2[i] - t2[i - 1]
+        str_val = str_val + f' +{dt} {k2[i]}'
+
+    str_val = str_val + f' +{{GAP_NEG}} {k2[-1]}'
+
+    # gap_pos and gap_neg are parameters calculated within SPICE to oscillate at the right frequency and duty
+    return str_val
+
+def create_pwl_strings(
+        pwl_func:Callable, k1:NDArray, 
+        k2:NDArray, open_drain:bool = False, 
+        ng:bool = True, 
+        **kwargs
+        ):
+    '''
+    Wrapper for pwl string functions to check open drain logic and output the correct pair of strings.
+    '''
+    if open_drain:
+        kd_pwl_str = pwl_func(k1[:, _TIME], k1[:, _KD_OD], k2[:, _TIME], k2[:, _KD_OD], ng=ng, **kwargs)
+        return None, kd_pwl_str
+    else:
+        ku_pwl_str = pwl_func(k1[:, _TIME], k1[:, _KU], k2[:, _TIME], k2[:, _KU], ng=ng, **kwargs)
+        kd_pwl_str = pwl_func(k1[:, _TIME], k1[:, _KD], k2[:, _TIME], k2[:, _KD], ng=ng, **kwargs)
+        return ku_pwl_str, kd_pwl_str
+
+def create_arb_bitstream_pwl(t1:NDArray, k1:NDArray, t2:NDArray, k2:NDArray, ng:bool=False, bitstream:List[int] = [random.randint(0, 1) for _ in range(127)]) -> str:
+    """
+    Creates the PWL value string for an arbitrary bitstream. By choosing which k-parameter array one wants for k1 and k2, 
+    one can choose whether to have a rising or falling edge first.
+
+    Parameters
+    ----------
+    t1 
+        numpy time array for first edge
+    t2 
+        numpy time array for second edge
+    k1 
+        numpy ku or kd array for first edge
+    k2 
+        numpy ku or kd array for second edge
+
+    Returns
+    -------
+        the string that goes into the oscillator PWL source
+    """
+    def _create_ngspice_bitstream_waveform_pwl(t1:NDArray, k1:NDArray, t2:NDArray, k2:NDArray, bitstream:List[int]) -> str:
+
+        str_val = ''
+
+        if bitstream[0] == 0:
+            # First bit-value zero hold zero
+            str_val = str_val + f' 0 {k2[-1]}'
+            str_val = str_val + f' {{T_PERIOD*0.99}} {k2[-1]}'
+        else:
+            if t1[0] != 0:
+                str_val = str_val + f' 0 {k1[0]}'
+            for t, k in zip(t1, k1):
+                str_val = str_val + f' {t} {k}'
+
+        for period in range(1, len(bitstream)):
+            # if bit value does not change between 
+            if bitstream[period] == bitstream[period-1]:
+                if bitstream[period] == 1:
+                    str_val = str_val + f' {{T_PERIOD*({period}+0.99)}} {k1[-1]}'
+                else:
+                    str_val = str_val + f' {{T_PERIOD*({period}+0.99)}}  {k2[-1]}'
+                
+            elif bitstream[period] == 1:
+                for t, k in zip(t1, k1):
+                    str_val = str_val + f' {{T_PERIOD*{period}+{t}}} {k}'
+            else:
+                for t, k in zip(t2, k2):
+                    str_val = str_val + f' {{T_PERIOD*{period}+{t}}} {k}'
+
+        return str_val
+    
+    if ng:
+        return _create_ngspice_bitstream_waveform_pwl(t1, k1, t2, k2, bitstream)
+
+    # First Edge
+    # the +0.01p fudge is for Simetrix as it seems to have a bug in its PWLS source
+    # where it cannot start at any value other than 0 regardless of the k_r[0] value
+    
+    str_val = f'0 {k1[0]} +0.01e-12 {k1[0]}'
+    for i in range(1, len(t1)):
+        dt = t1[i] - t1[i - 1]
+        str_val = str_val + f' +{dt} {k1[i]}'
+
+    str_val = str_val + f' +{{GAP_POS}} {k1[-1]} +{t2[0]} {k2[0]}'
+
+    # Second Edge
+    for i in range(1, len(t2)):
+        dt = t2[i] - t2[i - 1]
+        str_val = str_val + f' +{dt} {k2[i]}'
+
+    str_val = str_val + f' +{{GAP_NEG}} {k2[-1]}'
+
+    # gap_pos and gap_neg are parameters calculated within SPICE to oscillate at the right frequency and duty
+    return str_val
+
+
+def determine_crossover_offsets(k_param:NDArray)->Tuple[float, float]:
+    """
+    Finds crossover point between rising and falling waveform in k_param NDArray.
+
+    Returns
+    -------
+    (offset_neg, offset_pos)
+        Time offset between beginning of k_param to crossover point and between crossover point to end of k_param
+    """
+
+    # crossover time point (x_t)
+    if np.shape(k_param)[1] == 3:
+        # Find the index of the minimum value of the difference between k_u and k_d
+        index = np.argmin(np.absolute(k_param[:, 1] - k_param[:, 2]))
+        x_t:float = k_param[index, 0]
+    else:
+        # Find the index of the value at the halfway voltage point of the k-param waveform
+        index = np.argmin((np.max(k_param[:, 1]) - np.min(k_param[:, 1]))/2)
+        x_t:float = k_param[index, 0]
+
+    # Time offset
+    offset_neg = x_t - k_param[0][0]
+    offset_pos = k_param[:, 0][-1] - x_t
+
+    return offset_neg, offset_pos

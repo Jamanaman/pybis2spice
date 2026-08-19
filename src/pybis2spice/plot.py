@@ -1,26 +1,28 @@
-# ----------------------------------------------------------------------------
-# Author: Kishan Amratia
-# Module Name: plot.py
-#
-# Module Description:
-# Companion functions for the pybis2spice module to provide plotting functionality
-#
-# ---------------------------------------------------------------------------
+'''
+Author: Kishan Amratia
+Module Name: plot.py
 
-# ---------------------------------------------------------------------------
-# Imports
-# ---------------------------------------------------------------------------
+Module Description:
+Companion functions for the pybis2spice module to provide plotting functionality
+'''
+
 import numpy as np
 import matplotlib.pyplot as plt
+from numpy.typing import NDArray
+from matplotlib.figure import Figure
+from typing import List, Optional
+from . import data_model as dm
 
-
-def plot_iv_data_single(data, title, marker=None):
+def plot_iv_data_single(data:NDArray, title:str, marker:Optional[str]=None):
     """
     Plots the data in a single figure
 
-    Parameters:
-        data: numpy array with data organised as [x-data, y-data_1, y-data_2..., y-data_n]
-        title: Plot title
+    Parameters
+    ----------
+        data
+            numpy array with data organised as [x-data, y-data_1, y-data_2..., y-data_n]
+        title
+            Plot title
     """
     fig = plot_single(data,
                       data_labels=['Typ', 'Min', 'Max'],
@@ -33,13 +35,16 @@ def plot_iv_data_single(data, title, marker=None):
     return fig
 
 
-def plot_rv_data_single(data, title, marker=None):
+def plot_rv_data_single(data: NDArray, title: str, marker:Optional[str]=None) -> Figure:
     """
     Plots the resistance-voltage data in a single figure
 
-    Parameters:
-        data: numpy array with data organised as [x-data, y-data_1, y-data_2..., y-data_n]
-        title: Plot title
+    Parameters
+    ----------
+        data
+            numpy array with data organised as [x-data, y-data_1, y-data_2..., y-data_n]
+        title
+            Plot title
     """
     fig = plot_single(data,
                       data_labels=['Typ', 'Min v_range - Weak', 'Max v_range - Strong'],
@@ -52,7 +57,7 @@ def plot_rv_data_single(data, title, marker=None):
     return fig
 
 
-def plot_iv_device_data(ibis_data, marker=None):
+def plot_iv_device_data(ibis_data:dm.DataModel, marker:Optional[str]=None) -> Figure:
     """
     takes the ibis_data DataModel object and plots the iv device data in 2 graphs laid out horizontally.
     left graph - Pull up device IV curve. right graph - Pull down device IV curve
@@ -71,7 +76,7 @@ def plot_iv_device_data(ibis_data, marker=None):
     return fig
 
 
-def plot_iv_clamp_data(ibis_data, marker=None):
+def plot_iv_clamp_data(ibis_data:dm.DataModel, marker:Optional[str]=None) -> Figure:
     """
     takes the ibis_data DataModel object and plots the clamp data in 2 graphs laid out horizontally
     left graph - Power Clamp IV curve. right graph - Ground Clamp IV curve
@@ -88,16 +93,21 @@ def plot_iv_clamp_data(ibis_data, marker=None):
     return fig
 
 
-def generate_vt_plot_title(waveform_type_str, waveform_obj):
+def generate_vt_plot_title(waveform_type_str:str, waveform_obj:dm.Waveform):
     """
     helper function to generate a comprehensive plot title for the VT waveforms.
 
-    Parameters:
-        waveform_type_str - text to signify the waveform type i.e. "Rising Edge" or "Falling Edge"
-        waveform_obj - Waveform object
+    Parameters
+    ----------
+        waveform_type_str 
+            text to signify the waveform type i.e. "Rising Edge" or "Falling Edge"
+        waveform_obj 
+            Waveform object
 
-    Returns:
-        title_str - A comprehensive title string that can be use in the plot titles.
+    Returns
+    -------
+        title_str 
+            A comprehensive title string that can be use in the plot titles.
 
     """
     title_str = f'{waveform_type_str}\n'
@@ -107,7 +117,7 @@ def generate_vt_plot_title(waveform_type_str, waveform_obj):
     return title_str
 
 
-def plot_vt_rising_waveform_data(ibis_data, marker=None):
+def plot_vt_rising_waveform_data(ibis_data:dm.DataModel, marker:Optional[str]=None):
     """
     takes the ibis_data DataModel object and plots the rising waveform data in 2 graphs laid out horizontally
     left graph - Rising Waveform 1. right graph - Rising Waveform 2
@@ -139,7 +149,7 @@ def plot_vt_rising_waveform_data(ibis_data, marker=None):
         return fig
 
 
-def plot_vt_falling_waveform_data(ibis_data, marker=None):
+def plot_vt_falling_waveform_data(ibis_data:dm.DataModel, marker:Optional[str]=None):
     """
     takes the ibis_data DataModel object and plots the falling waveform data in 2 graphs laid out horizontally
     left graph - Rising Waveform 1. right graph - Rising Waveform 2
@@ -170,7 +180,7 @@ def plot_vt_falling_waveform_data(ibis_data, marker=None):
         return fig
 
 
-def plot_all_ibis_data(ibis_data):
+def plot_all_ibis_data(ibis_data:dm.DataModel):
     """
     plots all the ibis data in sequence - IV device data, IV clamp data, Rising Waveforms, Falling Waveforms.
     """
@@ -180,18 +190,30 @@ def plot_all_ibis_data(ibis_data):
     plot_vt_falling_waveform_data(ibis_data)
 
 
-def plot_dual(data1, data2, data_labels, xlabel, ylabel, title1, title2, font_title_size=None, marker=None):
+def plot_dual(
+        data1:NDArray, data2:NDArray, data_labels:List[str], 
+        xlabel:str, ylabel:str, title1:str, 
+        title2:str, font_title_size:Optional[str]=None, marker:Optional[str]=None
+        ) -> Figure:
     """
     Plots 2 graphs laid out horizontally with given input data (Graph 1 - Left, Graph 2 - Right)
 
-        Parameters:
-            data1 - numpy array with data organised as [x-data, y-data_1, y-data_2..., y-data_n]. Plots on Graph 1
-            data2 - numpy array with data organised as [x-data, y-data_1, y-data_2..., y-data_n]. Plots on Graph 2
-            data_labels - list of strings that assigns a name to each line on the graph
-            x_label - x-axis label
-            y_label - y-axis label
-            title1 - title of graph 1
-            title1 - title of graph 2
+    Parameters
+    ----------
+        data1 
+            numpy array with data organised as [x-data, y-data_1, y-data_2..., y-data_n]. Plots on Graph 1
+        data2 
+            numpy array with data organised as [x-data, y-data_1, y-data_2..., y-data_n]. Plots on Graph 2
+        data_labels 
+            list of strings that assigns a name to each line on the graph
+        x_label 
+            x-axis label
+        y_label 
+            y-axis label
+        title1 
+            title of graph 1
+        title1 
+            title of graph 2
     """
     fig, (ax1, ax2) = plt.subplots(1, 2)
 
@@ -250,16 +272,26 @@ def plot_dual(data1, data2, data_labels, xlabel, ylabel, title1, title2, font_ti
     return fig
 
 
-def plot_single(data, data_labels, xlabel, ylabel, title, font_title_size=None, marker=None):
+def plot_single(
+        data:NDArray, data_labels:List[str], xlabel:str, 
+        ylabel:str, title:str, font_title_size:Optional[str]=None, 
+        marker:Optional[str]=None
+        ) -> Figure:
     """
     Plots a graph with given input data
 
-        Parameters:
-            data - numpy array with data organised as [x-data, y-data_1, y-data_2..., y-data_n].
-            data_labels - assigns a name to each line on the graph
-            x_label - x-axis label
-            y_label - y-axis label
-            title - title of graph
+    Parameters
+    ----------
+        data 
+            numpy array with data organised as [x-data, y-data_1, y-data_2..., y-data_n].
+        data_labels 
+            assigns a name to each line on the graph
+        x_label 
+            x-axis label
+        y_label 
+            y-axis label
+        title 
+            title of graph
     """
 
     fig, ax1 = plt.subplots()

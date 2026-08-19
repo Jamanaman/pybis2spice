@@ -1,35 +1,34 @@
-# ---------------------------------------------------------------------------
-# Author: Kishan Amratia
-# Date: 02-Jan-2022
-# Module Name: pybis2spice-gui.py
 """
 A tkinter GUI for helping users to convert IBIS models into SPICE models
-"""
-# ---------------------------------------------------------------------------
-import matplotlib.pyplot as plt
 
-from pybis2spice import pybis2spice
-from pybis2spice import plot
-from pybis2spice import version
-from pybis2spice import subcircuit
+Author: Kishan Amratia
+Date: 02-Jan-2022
+Module Name: pybis2spice-gui.py
+"""
+import matplotlib.pyplot as plt
+from ecdtools import ibis as ecd #type:ignore
 import tkinter as tk
 from tkinter import ttk
-from tkinter import messagebox
-from tkinter import filedialog
+from tkinter import messagebox, filedialog
 from tktooltip import ToolTip
-from matplotlib.backends.backend_tkagg import (FigureCanvasTkAgg, NavigationToolbar2Tk)
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from matplotlib.backends._backend_tk import NavigationToolbar2Tk
 import numpy as np
 import time
 import logging
 import webbrowser
 import urllib.request
-import img
 import re
 import os
 import platform
+from typing import List, get_args
+
+from pybis2spice import circuit_builder as ckt_build, data_model as dm, subcircuit as sckt, img, plot
+
+from importlib.metadata import version
 
 logging.basicConfig(level=logging.INFO)
-ibis_model = None  # The ecdtools ibis_model object
+ibis_file = None  # The ecdtools ibis_model object
 
 # ---------------------------------------------------------------------------
 # Helper Functions
@@ -44,7 +43,7 @@ def check_platform():
     return system
 
 def check_latest_version():
-    latest_version = version.get_version()
+    latest_version = version("pybis2spice")
 
     url = "https://raw.githubusercontent.com/kamratia1/pybis2spice/main/pybis2spice/version.txt"
     try:
@@ -56,7 +55,7 @@ def check_latest_version():
     return latest_version
 
 
-def check_supported_model_type(ibis_data):
+def check_supported_model_type(ibis_data: dm.DataModel):
     # Check that model type is supported by this tool
     # Check if model_type is supported
     model_type = ""
@@ -74,7 +73,7 @@ def check_supported_model_type(ibis_data):
     return supported
 
 
-def validate_type(ibis_data, io_type):
+def validate_type(ibis_data: dm.DataModel, io_type: sckt._IO_TYPE):
     # Check that io type selected matches the model_type
     # Returns True if it passes validation
 
@@ -90,20 +89,18 @@ def validate_type(ibis_data, io_type):
         messagebox.showwarning(title="Model type not supported", message=message)
         logging.error(message)
 
-    io_validate = False
-    model_types_list = ["input", "i/o", "i/o_open_drain"]
+    valid = False
     if io_type == "Input":
-        for item in model_types_list:
+        for item in ["input", "i/o", "i/o_open_drain"]:
             if item == model_type.lower():
-                io_validate = True
+                valid = True
 
-    model_types_list = ["output", "i/o", "3-state", "open_drain", "i/o_open_drain"]
     if io_type == "Output":
-        for item in model_types_list:
+        for item in ["output", "i/o", "3-state", "open_drain", "i/o_open_drain"]:
             if item == model_type.lower():
-                io_validate = True
+                valid = True
 
-    if supported and not io_validate:
+    if supported and not valid:
         message = f"I/O Select is invalid with IBIS model type.\n"
         message += f"Selected Model Type: {ibis_data.model_type}\n"
         if io_type == "Input":
@@ -114,7 +111,7 @@ def validate_type(ibis_data, io_type):
         messagebox.showwarning(title="I/O mismatch", message=message)
         logging.error(message)
 
-    ret_val = supported and io_validate
+    ret_val = supported and valid
     return ret_val
 
 
@@ -135,19 +132,18 @@ def help_message_callback():
     help_window.iconphoto(False, _icon_img)
 
     message1 = f"\n\nIBIS to SPICE Converter\n" \
-               f"Version: {version.get_version()}\n" \
-               f"Release Date: {version.get_date()}\n\n\n" \
+               f"Version: {version("pybis2spice")}\n" \
                f"Please report any bugs and issues at the link below.\n" \
                f"Detailed information on how the issue can be reproduced should be provided including \n" \
                f"any IBIS files used and version number of this program."
 
-    url1 = "https://github.com/kamratia1/pybis2spice/issues/"
+    url1 = "https://github.com/Jamanaman/pybis2spice/issues/"
     lbl_message1 = tk.Label(help_window, text=f"{message1}")
     link1 = tk.Label(help_window, text=url1)
     link1.bind("<Button-1>", lambda e: help_url_callback(url1))
 
     message2 = "Help on how to use this tool can be found within the README at "
-    url2 = "https://github.com/kamratia1/pybis2spice/"
+    url2 = "https://github.com/Jamanaman/pybis2spice/"
     lbl_message2 = tk.Label(help_window, text=f"\n\n{message2}")
     link2 = tk.Label(help_window, text=url2)
     link2.bind("<Button-1>", lambda e: help_url_callback(url2))
@@ -159,7 +155,7 @@ def help_message_callback():
 
     latest_version = check_latest_version()
     latest_version_float = float(latest_version)
-    current_version_float = float(version.get_version())
+    current_version_float = float(version("pybis2spice"))
 
     if latest_version_float > current_version_float:
         url3 = "https://github.com/kamratia1/pybis2spice/"
@@ -175,13 +171,15 @@ def create_subcircuit_file_callback():
     ibis_file_path = entry.get()
     component_name = list_component.get(tk.ACTIVE)
     model_name = list_model.get(tk.ACTIVE)
-    io_type = radio_var3.get()
-    subcircuit_type = radio_var1.get()  # LTSpice or Generic
-    corner = radio_var2.get()
+    io_type = io_type_var.get()
+    subcircuit_type = simulator_var.get()  # LTSpice or Generic
+    corner = corner_var.get()
+    truncation = input_var.get()
+    stimulus = stimulus_var.get()
 
     main_window.config(cursor="wait")
-    global ibis_model
-    ibis_data = pybis2spice.DataModel(ibis_model, model_name, component_name)
+    global ibis_file
+    ibis_data = dm.DataModel(ibis_file, model_name, component_name)
     main_window.update()
     time.sleep(0.01)
     main_window.config(cursor="")
@@ -199,7 +197,7 @@ def create_subcircuit_file_callback():
             logging.info(f"Subcircuit Type: {subcircuit_type}")
             logging.info(f"Corner: {corner}")
             logging.info(f"I/O Select: {io_type}")
-            create_subcircuit_file(ibis_data, subcircuit_type, corner, io_type)
+            create_subcircuit_file(ibis_data, subcircuit_type, corner, io_type, stimulus, truncation)
 
 
 def get_warnings_from_file(filepaths):
@@ -215,45 +213,52 @@ def get_warnings_from_file(filepaths):
     return warnings
 
 
-def create_subcircuit_file(ibis_data, subcircuit_type, corner, io_type):
+def create_subcircuit_file(ibis_data, subcircuit_type, corner, io_type, stimulus, truncation):
 
     if corner == "All":
         file = filedialog.askdirectory(parent=main_window)
     else:
-        filename = f'{ibis_data.model_name}-{io_type}-{corner}.sub'
+        if io_type != 'Input':
+            filename = f'{ibis_data.model_name}_{io_type}_{corner}_{stimulus}.sub' if not stimulus is None else f'{ibis_data.model_name}_{io_type}_{corner}.sub'
+        else:
+            filename = f'{ibis_data.model_name}_{io_type}_{corner}.sub'
         file = filedialog.asksaveasfile(parent=main_window,
                                         title='Choose a file',
-                                        filetypes=[("Subcircuit Files", ".sub")],
+                                        filetypes=[("Subcircuit Files", ".sub"), ("Library Files", '.lib')],
                                         initialfile=f"{filename}")
+        if not file is None:
+            file = file.name
 
     # If file/directory was chosen by user
     if file:
         if corner == "All":
             logging.info(f"Chosen Directory: {file}")
 
-            corners = ["WeakSlow", "Typical", "FastStrong"]
+            corners:List[sckt._CORNER] = ["WeakSlow", "Typical", "FastStrong"]
             filepaths = []
-            generate_model_status = 0
             for _corner in corners:
-                filename = f'{ibis_data.model_name}-{io_type}-{_corner}.sub'
+                if io_type != 'Input':
+                    filename = f'{ibis_data.model_name}_{io_type}_{_corner}_{stimulus}.sub' if not stimulus is None else f'{ibis_data.model_name}_{io_type}_{_corner}.sub'
+                else:
+                    filename = f'{ibis_data.model_name}_{io_type}_{_corner}.sub'
                 filepath = os.path.join(file, filename)
                 filepaths.append(filepath)
                 logging.info(f"Creating subcircuit for {_corner} corner at {filepath}")
-                ret_val = subcircuit.generate_spice_model(io_type=io_type,
+                fp_out = ckt_build.generate_spice_model_file(io_type=io_type,
                                                           subcircuit_type=subcircuit_type,
                                                           ibis_data=ibis_data,
                                                           corner=_corner,
-                                                          output_filepath=filepath)
-                generate_model_status += ret_val
+                                                          output_filepath=filepath,
+                                                          stimulus=stimulus,
+                                                          truncation=truncation)
 
-            if generate_model_status == 0:
-                message_success = f"SPICE subcircuit models successfully created at:\n{file}"
+                message_success = f"SPICE subcircuit models successfully created at:\n{fp_out}"
 
                 # Create symbol
                 if subcircuit_type == "LTSpice":
-                    symbol_file1 = subcircuit.create_ltspice_symbol(ibis_data, "WeakSlow", filepaths[0], io_type)
-                    symbol_file2 = subcircuit.create_ltspice_symbol(ibis_data, "Typical", filepaths[1], io_type)
-                    symbol_file3 = subcircuit.create_ltspice_symbol(ibis_data, "FastStrong", filepaths[2], io_type)
+                    symbol_file1 = sckt.create_ltspice_symbol(ibis_data, "WeakSlow", filepaths[0], io_type)
+                    symbol_file2 = sckt.create_ltspice_symbol(ibis_data, "Typical", filepaths[1], io_type)
+                    symbol_file3 = sckt.create_ltspice_symbol(ibis_data, "FastStrong", filepaths[2], io_type)
 
                     logging.info(f"LTSpice Symbol created at: {symbol_file1}")
                     logging.info(f"LTSpice Symbol created at: {symbol_file2}")
@@ -273,23 +278,25 @@ def create_subcircuit_file(ibis_data, subcircuit_type, corner, io_type):
                 logging.error(message_error)
 
         else:  # If a specific corner was chosen
-            logging.info(f"Chosen File: {file.name}")
+            logging.info(f"Chosen File: {file}")
             # Create the subcircuit file
-            generate_model_status = subcircuit.generate_spice_model(io_type=io_type,
+            generate_model_status = ckt_build.generate_spice_model_file(io_type=io_type,
                                                                     subcircuit_type=subcircuit_type,
                                                                     ibis_data=ibis_data,
                                                                     corner=corner,
-                                                                    output_filepath=file.name)
-            if generate_model_status == 0:
-                message_success = f"SPICE subcircuit model successfully created at:\n{file.name}"
+                                                                    output_filepath=file,
+                                                                    truncation=truncation,
+                                                                    stimulus=stimulus)
+            if len(generate_model_status) > 0:
+                message_success = f"SPICE subcircuit model successfully created at:\n{file}"
 
                 # Create symbol
                 if subcircuit_type == "LTSpice":
-                    symbol_file = subcircuit.create_ltspice_symbol(ibis_data, corner, file.name, io_type)
+                    symbol_file = sckt.create_ltspice_symbol(ibis_data, corner, file, io_type, stimulus)
                     logging.info(f"LTSpice Symbol created at: {symbol_file}")
                     message_success += f"\n\nLTSpice symbol also created successfully at:\n{symbol_file}\n"
 
-                warnings = get_warnings_from_file([file.name])
+                warnings = get_warnings_from_file([file])
                 if warnings != "":
                     message_success += f"\n\nWARNINGS within the SPICE subcircuit file: \n"
                     message_success += f"{warnings}"
@@ -325,16 +332,14 @@ def browse_ibis_file_callback():
         list_component.delete(0, tk.END)
         list_model.delete(0, tk.END)
 
-        global ibis_model
-        ibis_model = pybis2spice.get_ibis_model_ecdtools(ibis_filepath)
+        global ibis_file
         logging.info(f"Parsing ibis file from {ibis_filepath}")
+        ibis_file = ecd.load_file(ibis_filepath, transform=True)
 
-        component_names = pybis2spice.list_components(ibis_model)
-        for index, component in enumerate(component_names, start=1):
+        for index, component in enumerate(ibis_file.component_names, start=1):
             list_component.insert(index, component)
 
-        model_names = pybis2spice.list_models(ibis_model)
-        for index, model in enumerate(model_names, start=1):
+        for index, model in enumerate(ibis_file.model_names, start=1):
             list_model.insert(index, model)
 
         # Set default selection to first item
@@ -355,8 +360,8 @@ def check_model_callback():
 
     main_window.config(cursor="wait")
 
-    global ibis_model
-    ibis_data = pybis2spice.DataModel(ibis_model, model_name, component_name)
+    global ibis_file
+    ibis_data = dm.DataModel(ibis_file, model_name, component_name)
 
     main_window.update()
     time.sleep(0.1)
@@ -373,7 +378,7 @@ def check_model_callback():
 # Check Model Window
 # ---------------------------------------------------------------------------
 
-def check_model_window(ibis_data):
+def check_model_window(ibis_data: dm.DataModel):
     data_window = tk.Toplevel(main_window)
     data_window.geometry(f"+{main_window.winfo_rootx() + 50}+{main_window.winfo_rooty() + 50}")
     data_window.title(f"Check IBIS Model - {ibis_data.model_name}")
@@ -472,8 +477,10 @@ def check_model_window(ibis_data):
         rv_array[:, 3] = np.absolute(ibis_data.iv_pullup[:, 0] / ibis_data.iv_pullup[:, 3])  # max
 
         # Remove values outside the 0 - VCC range
-        vcc = pybis2spice.get_reference(ibis_data.pullup_ref, ibis_data.v_range, 3)
-        rv_array = rv_array[(np.logical_and(rv_array[:, 0] >= 0, rv_array[:, 0] <= vcc))]
+        vcc = dm.get_reference(ibis_data.pullup_ref, ibis_data.v_range, 3)
+        if vcc is not None:
+            rv_array = rv_array[(np.logical_and(rv_array[:, 0] >= 0, rv_array[:, 0] <= vcc))]
+        
 
         fig7 = plot.plot_rv_data_single(rv_array, "Pullup device Resistance-Voltage data", marker=marker)
         device_lbl = "\n1. Device configured to switch on pullup transistor.\n" \
@@ -492,8 +499,9 @@ def check_model_window(ibis_data):
         rv_array[:, 3] = np.absolute(ibis_data.iv_pulldown[:, 0] / ibis_data.iv_pulldown[:, 3])  # max
 
         # Remove values outside the 0 - VCC range
-        vcc = pybis2spice.get_reference(ibis_data.pullup_ref, ibis_data.v_range, 3)
-        rv_array = rv_array[(np.logical_and(rv_array[:, 0] >= 0, rv_array[:, 0] <= vcc))]
+        vcc = dm.get_reference(ibis_data.pullup_ref, ibis_data.v_range, 3)
+        if vcc is not None:
+            rv_array = rv_array[(np.logical_and(rv_array[:, 0] >= 0, rv_array[:, 0] <= vcc))]
 
         fig8 = plot.plot_rv_data_single(rv_array, "Pulldown device Resistance-Voltage data", marker=marker)
         device_lbl = "\n1. Device configured to switch on pulldown transistor.\n" \
@@ -717,12 +725,11 @@ def create_model_parameters_table(ibis_data, tab_obj):
 
     return table
 
-
 # Run the main main_window
 if __name__ == '__main__':
 
     _width = 740
-    _height = 480
+    _height = 540
 
     if check_platform() == "Mac":
         _width = 900
@@ -732,7 +739,7 @@ if __name__ == '__main__':
     main_window = tk.Tk()
     main_window.geometry(f"{_width}x{_height}")
     main_window.resizable(False, False)
-    main_window.title(f" IBIS to SPICE Converter - Version {version.get_version()}")
+    main_window.title(f" IBIS to SPICE Converter - Version {version("pybis2spice")}")
 
     # Set up the Icon
     # Using a base 64 image within a python file so that the exe build does not depend on an external icon file
@@ -796,29 +803,32 @@ if __name__ == '__main__':
     # ---------------------------------------------------------------------------
     # Frame 3: SPICE subcircuit options
     # ---------------------------------------------------------------------------
-    frame3 = tk.Frame(main_window, height=150, width=_width, relief=tk.SUNKEN, borderwidth=1)
+    frame3 = tk.Frame(main_window, height=200, width=_width, relief=tk.SUNKEN, borderwidth=1)
     frame3.pack(padx=10, pady=10)
     label3 = tk.Label(master=frame3, text="Spice Subcircuit Options")
     label3.place(x=10, y=10)
 
-    # Radio Buttons for LTSpice vs Generic
-    radio_var1 = tk.StringVar()
-    radio1 = tk.Radiobutton(master=frame3, text="LTSpice", variable=radio_var1, value="LTSpice")
-    radio2 = tk.Radiobutton(master=frame3, text="Generic", variable=radio_var1, value="Generic")
+    # Radio Buttons for LTSpice vs Generic vs ngSPICE
+    simulator_var = tk.StringVar()
+    radio1 = tk.Radiobutton(master=frame3, text="LTSpice", variable=simulator_var, value="LTSpice")
+    radio2 = tk.Radiobutton(master=frame3, text="Generic", variable=simulator_var, value="Generic")
+    radio3 = tk.Radiobutton(master=frame3, text="ngSPICE", variable=simulator_var, value="ngSPICE")
     radio1.select()  # Select LTSpice as default type
     radio1.place(x=170, y=10)
     radio2.place(x=250, y=10)
+    radio3.place(x=330, y=10)
     ToolTip(radio1, msg="produces a subcircuit file containing special syntax specific to LTSpice", delay=0.2)
     ToolTip(radio2, msg="produces a subcircuit file that most Spice simulators should be able to parse", delay=0.2)
+    ToolTip(radio3, msg="produces a subcircuit file containing special syntax specific to ngSPICE", delay=0.2)
 
     # Radio Buttons for Corner Select
     label4 = tk.Label(master=frame3, text="Corner Select")
     label4.place(x=10, y=40)
-    radio_var2 = tk.StringVar()
-    radio3 = tk.Radiobutton(master=frame3, text="Weak-Slow", variable=radio_var2, value="WeakSlow")
-    radio4 = tk.Radiobutton(master=frame3, text="Typical", variable=radio_var2, value="Typical")
-    radio5 = tk.Radiobutton(master=frame3, text="Fast-Strong", variable=radio_var2, value="FastStrong")
-    radio6 = tk.Radiobutton(master=frame3, text="All", variable=radio_var2, value="All")
+    corner_var = tk.StringVar()
+    radio3 = tk.Radiobutton(master=frame3, text="Weak-Slow", variable=corner_var, value="WeakSlow")
+    radio4 = tk.Radiobutton(master=frame3, text="Typical", variable=corner_var, value="Typical")
+    radio5 = tk.Radiobutton(master=frame3, text="Fast-Strong", variable=corner_var, value="FastStrong")
+    radio6 = tk.Radiobutton(master=frame3, text="All", variable=corner_var, value="All")
     radio4.select()
     radio3.place(x=170, y=40)
     radio4.place(x=270, y=40)
@@ -833,9 +843,9 @@ if __name__ == '__main__':
     # Radio Buttons for Selecting Input or Output Model Type
     label5 = tk.Label(master=frame3, text="I/O Type")
     label5.place(x=10, y=70)
-    radio_var3 = tk.StringVar()
-    radio7 = tk.Radiobutton(master=frame3, text="Input", variable=radio_var3, value="Input")
-    radio8 = tk.Radiobutton(master=frame3, text="Output", variable=radio_var3, value="Output")
+    io_type_var = tk.StringVar()
+    radio7 = tk.Radiobutton(master=frame3, text="Input", variable=io_type_var, value="Input")
+    radio8 = tk.Radiobutton(master=frame3, text="Output", variable=io_type_var, value="Output")
     radio7.select()
     radio7.place(x=170, y=70)
     radio8.place(x=250, y=70)
@@ -846,13 +856,68 @@ if __name__ == '__main__':
     ToolTip(radio7, msg="subcircuit will be created for the input pin - no pullup/pulldown transistors", delay=0.2)
     ToolTip(radio8, msg="subcircuit will be created for the output pin - with pullup/pulldown transistors", delay=0.2)
 
+    stim_type_label = tk.Label(master=frame3, text="Stimulus Type")
+    stim_type_label.place(x=410, y=70)
+    stimulus_var = tk.StringVar()
+    stimulus_combo = ttk.Combobox(
+        master=frame3, 
+        values=get_args(sckt._STIMULUS),
+        textvariable=stimulus_var,
+        state='disabled'
+    )
+    stimulus_combo.place(x=530, y=70)
+    
+    def update_combo_state(*args): # Callback function for trace
+        if io_type_var.get() == 'Output':
+            stimulus_combo.configure(state="enabled")
+            stimulus_combo.set("ALL")
+        if io_type_var.get() == 'Input':
+            stimulus_combo.configure(state="disabled")
+
+    io_type_var.trace_add("write", update_combo_state)
+
+    label6 = tk.Label(master=frame3, text="Truncate Rising/Falling Waveforms")
+    label6.place(x=10, y=110)
+    check_var = tk.BooleanVar(value=False)
+    check1 = tk.Checkbutton(master=frame3, text="Enable", variable=check_var)
+    check1.place(x=250, y=110)
+    input_var = tk.DoubleVar()
+    input_box = tk.Entry(master=frame3, textvariable=input_var, state='disabled')
+    input_box.place(x=330, y=110)
+
+    ToolTip(input_box, msg="percentage difference between final values to use as truncation criteria in decimal form", delay=0.2)
+
+    def update_button_state(*args): # Callback function for trace
+        if check_var.get():
+            input_box.configure(state="normal")
+            input_var.set(0.0005)
+        else:
+            input_box.configure(state="disabled")
+            input_var.set(0.0)
+        if io_type_var.get() == 'Output':
+            check1.configure(state="normal")
+            check_var.set(False)
+        if io_type_var.get() == 'Input':
+            check_var.set(False)
+            check1.configure(state="disabled")
+
+    check_var.trace_add("write", update_button_state)
+
+    def clamp_input_var(*args): # Callback function for trace
+        if input_var.get() > 1:
+            input_var.set(1.0)
+        elif input_var.get() < 0:
+            input_var.set(0.0)
+
+    input_var.trace_add("write", clamp_input_var)
+
     btn3 = tk.Button(master=frame3, text="Help", command=help_message_callback)
-    btn3.place(x=10, y=110)
+    btn3.place(x=10, y=150)
 
     btn4_xpos = 50
     if check_platform() == "Mac":
         btn4_xpos = 80
     btn4 = tk.Button(master=frame3, text="Create SPICE Subcircuit", command=create_subcircuit_file_callback)
-    btn4.place(x=btn4_xpos, y=110)
+    btn4.place(x=btn4_xpos, y=150)
 
     main_window.mainloop()
