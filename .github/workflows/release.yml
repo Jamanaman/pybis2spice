@@ -3,7 +3,6 @@ name: "Publish release to PyPI"
 on:
   push:
     tags: [ 'v*.*.*' ]
-    branches: [main]
 
 jobs:
   build:
@@ -106,6 +105,9 @@ jobs:
           path: bin/
 
   upload_executables:
+    needs: 
+      [ build, build_executables ]
+
     runs-on: ubuntu-latest
     steps:
       - name: Download distributions artifact
