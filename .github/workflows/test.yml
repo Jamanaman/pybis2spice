@@ -25,7 +25,7 @@ jobs:
         # For example, using `pytest`
         run: |
           uv pip install pytest pytest-cov
-          uv run pytest test --doctest-modules --junitxml=junit/test-results-${{ matrix.python-version }}.xml --cov=. --cov-report=xml:cobertura.xml
+          uv run pytest test --doctest-modules --junitxml=junit/test-results-${{ matrix.python-version }}.xml
 
       - name: Upload pytest test results
         uses: actions/upload-artifact@v4
@@ -33,16 +33,7 @@ jobs:
           name: pytest-results-${{ matrix.python-version }}
           path: junit/test-results-${{ matrix.python-version }}.xml
         # Use always() to always run this step to publish test results when there are test failures
-        if: ${{ always() }}
-
-      - name: Upload coverage report
-        uses: actions/upload-code-coverage@v1
-        with:
-          file: coverage.xml
-          language: Python
-          label: code-coverage/pytest
-        if: ${{ always() }}
-  
+        if: ${{ always() }}  
   
   coverage:
     needs: test
