@@ -17,11 +17,8 @@ maintainers = [
 ]
 
 [build-system]
-requires = ["uv"]
+requires = ["uv", "uv_build"]
 build-backend = "uv_build"
-
-[tool.uv.extra-build-dependencies]
-pybis2spice=["uv_build"]
 
 [[tool.uv.index]]
 name = "testpypi"
