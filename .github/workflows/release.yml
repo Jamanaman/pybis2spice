@@ -123,4 +123,7 @@ jobs:
       - name: Upload artifacts to release
         uses: softprops/action-gh-release@v3
         with:
-          files: ./dist/
+          working_directory: dist
+          files: |
+            *.whl
+            executable*
