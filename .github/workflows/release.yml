@@ -118,9 +118,9 @@ jobs:
           path: dist/
           merge-multiple: true
 
+      - run: ls -R 
+
       - name: Upload artifacts to release
         uses: softprops/action-gh-release@v3
         with:
-          files: |
-            dist
-            executable*
+          files: ./dist/
