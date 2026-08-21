@@ -71,6 +71,48 @@ class DataModel(object):
             component_name
                 component name as defined in ibis model
 
+        Attributes
+        ----------
+            model_name: str
+                Name of product model
+            component_name: str
+                Name of component type representing the buffer type which is associated with one or many pin/s
+            file: ecd.IbsFile
+                IBIS input file
+            file_name: str
+                IBIS input file name
+            model: ecd.Model
+                processed model specific data from IBIS file
+            component: ecd.Component
+                processed pin specific data from IBIS file
+            model_type: str
+                model type as per IBIS standard
+            enable: str
+                whether the pin is an enable pin
+            polarity: str
+                inverting or non-inverting
+            v_ref: float
+                reference voltage used for IBIS model measurement
+            r_pkg, l_pkg, c_pkg: TypMinMax
+                package RLC values
+            c_comp: TypMinMax
+                parallel capacitance between internal node across behavioural sources
+            c_comp_pullup, c_comp_pulldown, c_comp_power_clamp, c_comp_gnd_clamp: TypMinMax
+                parallel capacitances across individual behavioural sources which introduce further dynamic behaviours depending on which sources are active
+                if these are present they are preferred to c_comp in the IBIS standard
+            v_range: NDArray
+                voltage ranges representing min and max input voltages for each represented corner
+            temp_range: NDArray
+                temperature range representing min and max operating temperatures
+            pullup_ref, pulldown_ref, pwr_clamp_ref, gnd_clamp_ref: NDArray
+                reference voltages for each behavioural source to define the scaling ranges
+            iv_pullup, iv_pulldown, iv_pwr_clamp, iv_ground_clamp: NDArray
+                iv tables for each behavioural source
+            ramp: NDArray
+                ramp rate data in dv/dt for rising and falling edges in different corners and different load impedances
+            vt_rising, vt_falling: Waveform|NDArray
+                either vt tables as directly specified in the IBIS data file or if not specified, these are vt tables built using the ramp rates
+                
         Note
         ----
         All Data is stored in numpy arrays organised in columns as typical, min and max:
