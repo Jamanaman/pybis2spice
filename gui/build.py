@@ -26,8 +26,10 @@ def create_gui_exe(os_name:str) -> str:
         path of output file
     '''
 
-    if os.path.exists(f'pybis2spice_gui_v{version("pybis2spice")}'):
-        os.remove(f'pybis2spice_gui_v{version("pybis2spice")}')
+    file_type = '' if os_name == 'mac' else '.exe'
+
+    if os.path.exists(f'pybis2spice_gui_v{version("pybis2spice")}{file_type}'):
+        os.remove(f'pybis2spice_gui_v{version("pybis2spice")}{file_type}')
 
     PyInstaller.__main__.run([
         'pybis2spice_gui.py',
@@ -38,8 +40,6 @@ def create_gui_exe(os_name:str) -> str:
         '--collect-all', 
         'textparser'
     ])
-
-    file_type = '' if os_name == 'mac' else '.exe'
 
     shutil.copy(os.path.join('dist', 'pybis2spice_gui'+file_type), os.getcwd())
 
@@ -89,7 +89,7 @@ def folder_mopup(os_name:str):
         os.remove(zip_path)
 
     # Copy the executable and the examples directory into the version number folder
-    src_gui_filepath = os.path.join(os.getcwd(), 'pybis2spice_gui')
+    src_gui_filepath = os.path.join(os.getcwd(), f'pybis2spice_gui{file_type}')
     shutil.copy(src_gui_filepath, folder_path)
 
     src_examples_dir = os.path.join(os.path.dirname(os.getcwd()), "examples")
@@ -110,15 +110,17 @@ if __name__ == '__main__':
     else:
         raise NotImplementedError()
 
+    file_type = '' if os_name == 'mac' else '.exe'
+
     if _GENERATE_EXE_GUI:
         gui_filepath = create_gui_exe(os_name)
     else:
-        gui_filepath = os.path.join(os.getcwd(), 'pybis2spice_gui')
+        gui_filepath = os.path.join(os.getcwd(), f'pybis2spice_gui{file_type}')
 
     # Rename the GUI file to include the version number
     if os.path.exists(gui_filepath):
         try:
-            os.rename(gui_filepath, os.path.join(os.getcwd(), f'pybis2spice_gui'))
+            os.rename(gui_filepath, os.path.join(os.getcwd(), f'pybis2spice_gui{file_type}'))
         except:
             pass
 
