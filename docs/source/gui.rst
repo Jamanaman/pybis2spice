@@ -12,18 +12,10 @@ Module contents
 Submodules
 ----------
 
-gui.build\_mac module
+gui.build module
 ---------------------
 
-.. automodule:: gui.build_mac
-   :members:
-   :show-inheritance:
-   :undoc-members:
-
-gui.build\_win module
----------------------
-
-.. automodule:: gui.build_win
+.. automodule:: gui.build
    :members:
    :show-inheritance:
    :undoc-members:
