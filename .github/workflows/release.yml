@@ -124,4 +124,6 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           working_directory: dist
-          files: pybis2spice*
+          files: |
+            pybis2spice*.whl
+            pybis2spice*.zip

@@ -125,10 +125,7 @@ venv.bak/
 .dmypy.json
 dmypy.json
 
-# Pyre type checker
-.pyre/
-
-pybis2spice/scratch_space.py
+bin/*
 .idea/*
 gui/build/*
 gui/dist/*
