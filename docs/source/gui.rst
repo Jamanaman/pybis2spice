@@ -1,5 +1,9 @@
 gui package
 ===========
+Users should not have to interact with the internals of this package but for users who have
+cloned the repository, this can be run directly using `python pybis2spice_gui.py`. Additionally,
+for local building and to test GUI and code changes with the GUI one can build the GUI when working 
+on Windows or Mac using `python build.py`. The build script must be run from the gui folder currently.
 
 Module contents
 ---------------

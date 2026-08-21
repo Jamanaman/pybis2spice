@@ -8,6 +8,9 @@ A python tool that converts IBIS models to SPICE models. The ibis model types cu
 
 This tool was originally developed and maintained by Kishan Amratia (https://github.com/kamratia1) but has since moved to a new repo (https://github.com/Jamanaman/pybis2spice) and the project will be continued there for the foreseeable future.
 
+## Docs
+To read the docs go to https://pybis2spice.readthedocs.io/en/latest/. These are maintained alongside the project and include some simple code examples for programmatic use of the internal functions that may be helpful for integration into automation projects. 
+
 ## Usage
 The bin folder holds a zipped file for each released version containing a windows executable program that can be run standalone.
 
@@ -37,7 +40,7 @@ This is the recommended option as it provides the most flexibility for output mo
 
 ## Examples
 LTSpice examples are given to highlight the different options available. 
-These are available in the examples folder.
+These are available in the examples folder provided with the executables.
 
 ## Contribution
 Developers can contribute to the tool by forking the repository and submitting pull requests.
@@ -45,7 +48,6 @@ Developers can contribute to the tool by forking the repository and submitting p
 ## Issues and Feature Requests
 * Please record any bugs, issues and feature requests here: https://github.com/Jamanaman/pybis2spice/issues
 * Detailed information on how any issue can be reproduced should be provided including any IBIS files used and version number of the program. Screenshots would also help.
-
 
 ## References
 The tool would not be possible without the ecdtools library. This parses the ibis file into python data structures.
