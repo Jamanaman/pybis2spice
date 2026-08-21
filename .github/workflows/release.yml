@@ -104,7 +104,7 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: executable-${{ matrix.target }}
-          path: ./gui/dist/
+          path: ./bin/
 
   upload_executables:
     needs: 
@@ -124,6 +124,4 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           working_directory: dist
-          files: |
-            *.whl
-            pybis2spice-gui*
+          files: pybis2spice*
