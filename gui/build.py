@@ -10,27 +10,21 @@ Module Name: build-mac.py
 import PyInstaller.__main__
 import shutil
 import os
+from sys import platform
 import fnmatch
 from importlib.metadata import version
 
 _GENERATE_EXE_GUI = True
 
-def create_gui_exe():
+def create_gui_exe(os_name:str):
     # MAKE SURE THE WORKING DIRECTORY IS CLOSED BEFORE RUNNING THESE SCRIPTS
 
     if os.path.exists(f'pybis2spice_gui_v{version("pybis2spice")}'):
         os.remove(f'pybis2spice_gui_v{version("pybis2spice")}')
 
-    # PyInstaller.__main__.run([
-    #     'pybis2spice_gui.py',
-    #     '--noconsole',
-    #     '-iicon.ico',
-    #     '--onefile'
-    # ])
-
     PyInstaller.__main__.run([
         'pybis2spice_gui.py',
-        '-iicon.icns',
+        '-iicon.icns' if os_name == 'mac' else '-iicon.ico',
         '--onefile',
         '--collect-all', 
         'ecdtools',
@@ -55,13 +49,13 @@ def recursively_delete_files_with_pattern(directory_path, pattern):
                 print("Error while deleting file")
 
 
-def folder_mopup():
+def folder_mopup(os_name:str):
     bin_path = os.path.join(os.path.dirname(os.getcwd()), "bin")
     if not os.path.exists(bin_path):
         os.mkdir(bin_path)
 
     # Check if version folder already exists within bin and delete it
-    folder_path = os.path.join(os.path.dirname(os.getcwd()), "bin", f"pybis2spice_v{version("pybis2spice")}-mac")
+    folder_path = os.path.join(os.path.dirname(os.getcwd()), "bin", f"pybis2spice_v{version("pybis2spice")}-{os_name}")
     if os.path.exists(folder_path):
         shutil.rmtree(folder_path)
 
@@ -69,7 +63,7 @@ def folder_mopup():
     os.mkdir(folder_path)
 
     # Check if zip exists and delete
-    zip_path = os.path.join(os.path.dirname(os.getcwd()), "bin", f"pybis2spice_v{version("pybis2spice")}-mac.zip")
+    zip_path = os.path.join(os.path.dirname(os.getcwd()), "bin", f"pybis2spice_v{version("pybis2spice")}-{os_name}.zip")
     if os.path.exists(zip_path):
         os.remove(zip_path)
 
@@ -88,8 +82,15 @@ def folder_mopup():
 
 if __name__ == '__main__':
 
+    if platform == "darwin":
+        os_name = 'mac'
+    elif platform in ["win32", "cygwin"]:
+        os_name = 'win'
+    else:
+        raise NotImplementedError()
+
     if _GENERATE_EXE_GUI:
-        gui_filepath = create_gui_exe()
+        gui_filepath = create_gui_exe(os_name)
     else:
         gui_filepath = os.path.join(os.getcwd(), 'pybis2spice_gui')
 
@@ -102,11 +103,11 @@ if __name__ == '__main__':
 
 
     # Creates folder in bin directory and copies executable and example files
-    folder_mopup()
+    folder_mopup(os_name)
 
     # Zip up the contents
-    base_path = os.path.join(os.path.dirname(os.getcwd()), "bin", f"pybis2spice_v{version("pybis2spice")}-mac")
+    base_path = os.path.join(os.path.dirname(os.getcwd()), "bin", f"pybis2spice_v{version("pybis2spice")}-{os_name}")
     shutil.make_archive(base_name=base_path,
                         format='zip',
                         root_dir=os.path.dirname(base_path),
-                        base_dir=f"pybis2spice_v{version("pybis2spice")}-mac")
+                        base_dir=f"pybis2spice_v{version("pybis2spice")}-{os_name}")

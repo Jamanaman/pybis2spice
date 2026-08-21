@@ -84,20 +84,12 @@ jobs:
         with:
           enable-cache: true
         
-      - name: Build Windows Executable
+      - name: Build ${{runner.os}} Executable
         if: runner.os == 'Windows'
         run: |
           uv sync --dev 
           cd gui
-          uv run build_win.py
-          cd ..
-
-      - name: Build Mac Executable
-        if: runner.os == 'MacOS'
-        run: |
-          uv sync --dev
-          cd gui
-          uv run build_mac.py
+          uv run build.py
           cd ..
           
       - name: Upload executables as artifacts
