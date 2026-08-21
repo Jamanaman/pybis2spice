@@ -1,5 +1,5 @@
 """
-A build script to create executable versions of the windows gui
+A build script to create executable versions of the mad gui
 NEEDS TO BE RUN ON A MAC OS MACHINE
 
 Author: Kishan Amratia

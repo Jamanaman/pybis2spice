@@ -1,6 +1,14 @@
 gui package
 ===========
 
+Module contents
+---------------
+
+.. automodule:: gui
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
 Submodules
 ----------
 
@@ -24,14 +32,6 @@ gui.pybis2spice\_gui module
 ---------------------------
 
 .. automodule:: gui.pybis2spice_gui
-   :members:
-   :show-inheritance:
-   :undoc-members:
-
-Module contents
----------------
-
-.. automodule:: gui
    :members:
    :show-inheritance:
    :undoc-members:

@@ -1,6 +1,14 @@
 pybis2spice package
 ===================
 
+Module contents
+---------------
+
+.. automodule:: pybis2spice
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
 Submodules
 ----------
 
@@ -44,18 +52,4 @@ pybis2spice.subcircuit module
    :show-inheritance:
    :undoc-members:
 
-pybis2spice.version module
---------------------------
 
-.. automodule:: pybis2spice.version
-   :members:
-   :show-inheritance:
-   :undoc-members:
-
-Module contents
----------------
-
-.. automodule:: pybis2spice
-   :members:
-   :show-inheritance:
-   :undoc-members:
