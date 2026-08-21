@@ -1,4 +1,4 @@
-name: "Publish release to PyPI"
+name: "Publish release to pypi and upload executables"
 
 on:
   push:
@@ -126,4 +126,4 @@ jobs:
           working_directory: dist
           files: |
             *.whl
-            executable*
+            pybis2spice-gui*
