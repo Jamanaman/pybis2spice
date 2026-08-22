@@ -30,8 +30,11 @@ autodoc_inherit_docstrings = True
 # -- Options for HTML output -------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
 
-html_theme = 'pydata_sphinx_theme'
+html_theme = 'shibuya'
 html_static_path = ['_static']
+html_theme_options = {
+  "accent_color": "grass",
+}
 
 import os
 import sys

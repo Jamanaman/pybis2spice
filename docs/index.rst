@@ -13,6 +13,8 @@ by the relevant representative passives such as die and package capacitances. Th
 primarily by `Kishan Amratia`_  built upon the ecdtools project by `Erik Moqvist`_ to interpret IBIS input files
 (https://github.com/eerimoq/ecdtools.git)
 
+The main repository is hosted at (https://github.com/Jamanaman/pybis2spice.git).
+
 .. _Kishan Amratia: <https://github.com/kamratia1/>
 .. _Erik Moqvist: <https://github.com/eerimoq/>
 
@@ -21,3 +23,4 @@ primarily by `Kishan Amratia`_  built upon the ecdtools project by `Erik Moqvist
    :caption: Contents:
 
    source/modules
+   user_guide
